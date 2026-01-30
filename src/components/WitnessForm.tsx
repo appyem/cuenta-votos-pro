@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { addDoc, collection, serverTimestamp, getDocs, query, orderBy } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, query, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { MUNICIPALITIES, Municipality } from '../config/municipalities';
 import { useParams } from 'react-router-dom';
@@ -20,7 +20,7 @@ export default function WitnessForm() {
   // Obtener datos del municipio
   const municipioData: Municipality | undefined = MUNICIPALITIES.find(m => m.id === municipioParam);
   
-  // Estado para los datos del testigo
+  // Estado para los datos del testigo (persistirá después del envío)
   const [formData, setFormData] = useState({
     name: '',
     id: '',
@@ -162,18 +162,33 @@ export default function WitnessForm() {
       console.log('Reporte enviado con ID:', docRef.id);
       setSubmitSuccess(true);
       
-      // Limpiar formulario después de 2 segundos
+      // Limpiar formulario después de 2 segundos, PERO MANTENER DATOS DEL TESTIGO
       setTimeout(() => {
-        setFormData({ name: '', id: '', phone: '', votingPlace: '', tableNumber: '' });
+        // Mantener nombre, cédula y teléfono del testigo
+        const { name, id, phone } = formData;
+        
+        // Resetear SOLO los datos de la mesa y votos
+        setFormData({
+          name,
+          id,
+          phone,
+          votingPlace: '',
+          tableNumber: ''
+        });
+        
+        // Resetear votos a cero para todos los candidatos
         const resetVotes: { [key: string]: number } = {};
         candidates.forEach(cand => {
           resetVotes[cand.id] = 0;
         });
         setVotes(resetVotes);
         setBlankVotes(0);
+        
+        // Resetear irregularidades
         setHasIrregularity(false);
         setIrregularityType('');
         setObservation('');
+        
         setSubmitSuccess(false);
       }, 2000);
       
@@ -240,7 +255,7 @@ export default function WitnessForm() {
           </div>
         )}
 
-        {/* Sección 1: Información del Testigo */}
+        {/* Sección 1: Información del Testigo (DATOS QUE PERSISTEN) */}
         <div>
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -296,11 +311,14 @@ export default function WitnessForm() {
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Ej: 3104567890"
               />
+              <p className="text-xs text-gray-500 mt-1">
+                <strong>💡 Este dato se mantendrá para tus próximos reportes</strong>
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Sección 2: Ubicación de la Mesa */}
+        {/* Sección 2: Ubicación de la Mesa (SE RESETEA) */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -356,7 +374,7 @@ export default function WitnessForm() {
           </div>
         </div>
 
-        {/* Sección 3: Resultados de la Mesa */}
+        {/* Sección 3: Resultados de la Mesa (SE RESETEA) */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -430,7 +448,7 @@ export default function WitnessForm() {
           )}
         </div>
 
-        {/* Sección 4: Irregularidades */}
+        {/* Sección 4: Irregularidades (SE RESETEA) */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -545,6 +563,9 @@ export default function WitnessForm() {
           </button>
           <p className="text-xs text-gray-500 mt-2 text-center">
             * Campos obligatorios. Total mínimo: 1 voto. Los datos se envían directamente a Firebase.
+          </p>
+          <p className="text-xs text-blue-600 mt-2 text-center font-medium">
+            💡 Tu nombre, cédula y teléfono se mantendrán para tus próximos reportes
           </p>
         </div>
       </form>
