@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -46,65 +46,12 @@ export default function Dashboard() {
   const [showCandidateForm, setShowCandidateForm] = useState(false);
   const [isSubmittingCandidate, setIsSubmittingCandidate] = useState(false);
 
-  // Conectar con Firestore para reports
-  useEffect(() => {
-    const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        try {
-          const reportsData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          calculateStats(reportsData);
-          setLoading(false);
-          setError(null);
-        } catch (err) {
-          console.error('Error processing reports:', err);
-          setError('Error al procesar los datos');
-          setLoading(false);
-        }
-      },
-      (err) => {
-        console.error('Error fetching reports from Firestore:', err);
-        setError('Error de conexión con la base de datos');
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [candidates]); // Recalcular cuando cambien los candidatos
-
-  // Conectar con Firestore para candidates
-  useEffect(() => {
-    const candidatesQuery = query(collection(db, 'candidates'), orderBy('timestamp', 'desc'));
-    
-    const unsubscribe = onSnapshot(candidatesQuery, 
-      (snapshot) => {
-        try {
-          const candidatesData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          setCandidates(candidatesData);
-        } catch (err) {
-          console.error('Error fetching candidates:', err);
-        }
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
-
-  // Calcular estadísticas desde los reportes (usa candidatos reales)
-  const calculateStats = (reportsData: any[]) => {
+  // Calcular estadísticas (USAMOS useCallback para evitar el error de dependencias)
+  const calculateStats = useCallback((reportsData: any[]) => {
     let totalVotes = 0;
     const candidateTotals: { [key: string]: number } = {};
     
-    // Inicializar con candidatos reales de Firestore
+    // Inicializar contadores con candidatos reales
     candidates.forEach(cand => {
       candidateTotals[cand.id] = 0;
     });
@@ -127,7 +74,6 @@ export default function Dashboard() {
       activeAlerts: reportsData.filter(r => r.hasIrregularity && !r.resolved).length
     });
 
-    // Preparar datos para el gráfico usando candidatos reales
     const chartData = candidates.map(cand => ({
       name: cand.name.split(' ')[0],
       votes: candidateTotals[cand.id] || 0,
@@ -135,13 +81,65 @@ export default function Dashboard() {
     }));
     setVotesChartData(chartData);
 
-    // Preparar lista de candidatos con votos
     const candidateData = candidates.map(cand => ({
       ...cand,
       votes: candidateTotals[cand.id] || 0
     }));
     setCandidateList(candidateData);
-  };
+  }, [candidates]); // Dependencia explícita de candidates
+
+  // Conectar con Firestore para reports (CORREGIDO: dependencia de calculateStats)
+  useEffect(() => {
+    const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        try {
+          const reportsData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          calculateStats(reportsData); // Ahora calculateStats es estable gracias a useCallback
+          setLoading(false);
+          setError(null);
+        } catch (err) {
+          console.error('Error processing reports:', err);
+          setError('Error al procesar los datos');
+          setLoading(false);
+        }
+      },
+      (err) => {
+        console.error('Error fetching reports from Firestore:', err);
+        setError('Error de conexión con la base de datos');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [calculateStats]); // calculateStats es estable gracias a useCallback
+
+  // Conectar con Firestore para candidates
+  useEffect(() => {
+    const candidatesQuery = query(collection(db, 'candidates'), orderBy('timestamp', 'desc'));
+    
+    const unsubscribe = onSnapshot(candidatesQuery, 
+      (snapshot) => {
+        try {
+          const candidatesData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          setCandidates(candidatesData);
+        } catch (err) {
+          console.error('Error fetching candidates:', err);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   // Formateador seguro para números
   const formatNumber = (value: number | string | undefined): string => {
@@ -495,7 +493,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Lista de Candidatos con BOTÓN DE ELIMINAR VISIBLE */}
+        {/* Lista de Candidatos */}
         <div>
           <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
             <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -617,7 +615,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Gráfico de votos - Solo muestra si hay candidatos */}
+      {/* Gráfico de votos */}
       {candidates.length > 0 ? (
         <div className="bg-white rounded-xl shadow-md p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">Votos por Candidato (Todos los municipios)</h2>
@@ -684,7 +682,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Lista de candidatos con votos - Solo muestra si hay candidatos */}
+      {/* Lista de candidatos con votos */}
       {candidates.length > 0 ? (
         <div className="bg-white rounded-xl shadow-md p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-4">Candidatos</h2>
