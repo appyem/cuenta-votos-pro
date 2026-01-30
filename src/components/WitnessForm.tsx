@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { MUNICIPALITIES, Municipality } from '../config/municipalities';
 import { useParams } from 'react-router-dom';
@@ -49,27 +49,25 @@ export default function WitnessForm() {
   useEffect(() => {
     const fetchCandidates = async () => {
       try {
-        const response = await fetch('/.netlify/functions/getCandidates');
-        if (response.ok) {
-          const data = await response.json();
-          setCandidates(data);
-          
-          // Inicializar votos con candidatos reales
-          const initialVotes: { [key: string]: number } = {};
-          data.forEach((cand: any) => {
-            initialVotes[cand.id] = 0;
-          });
-          setVotes(initialVotes);
-          setCandidatesLoaded(true);
-        } else {
-          // Fallback mínimo para evitar errores
-          setCandidates([]);
-          setVotes({});
-          setCandidatesLoaded(true);
-        }
+        const candidatesQuery = query(collection(db, 'candidates'), orderBy('timestamp', 'desc'));
+        const querySnapshot = await getDocs(candidatesQuery);
+        const candidatesData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        
+        setCandidates(candidatesData);
+        
+        // Inicializar votos con candidatos reales
+        const initialVotes: { [key: string]: number } = {};
+        candidatesData.forEach((cand: any) => {
+          initialVotes[cand.id] = 0;
+        });
+        setVotes(initialVotes);
+        setCandidatesLoaded(true);
       } catch (error) {
         console.error('Error cargando candidatos:', error);
-        // Fallback mínimo
+        // Fallback: candidatos vacíos pero marca como cargado
         setCandidates([]);
         setVotes({});
         setCandidatesLoaded(true);
