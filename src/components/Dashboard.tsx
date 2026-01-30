@@ -51,6 +51,8 @@ export default function Dashboard() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  
+
   // Conectar con Firestore para reports
   useEffect(() => {
     const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
@@ -80,6 +82,7 @@ export default function Dashboard() {
     );
 
     return () => unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Conectar con Firestore para candidates
