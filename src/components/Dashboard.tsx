@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -34,13 +34,14 @@ export default function Dashboard() {
   // Estado para selección de municipio
   const [selectedMunicipio, setSelectedMunicipio] = useState('manizales');
 
-  // Estado para gestión de candidatos
+  // Estado para gestión de candidatos (¡AGREGADO ballotNumber!)
   const [candidateForm, setCandidateForm] = useState({
     name: '',
     party: '',
     color: '#3b82f6',
     imageUrl: '',
-    position: 'gobernacion'
+    position: 'gobernacion',
+    ballotNumber: '' // ← ¡NUEVO CAMPO OBLIGATORIO!
   });
   const [candidates, setCandidates] = useState<any[]>([]);
   const [showCandidateForm, setShowCandidateForm] = useState(false);
@@ -51,64 +52,8 @@ export default function Dashboard() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  
-
-  // Conectar con Firestore para reports
-  useEffect(() => {
-    const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        try {
-          const reportsData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          calculateStats(reportsData);
-          setLoading(false);
-          setError(null);
-        } catch (err) {
-          console.error('Error processing reports:', err);
-          setError('Error al procesar los datos');
-          setLoading(false);
-        }
-      },
-      (err) => {
-        console.error('Error fetching reports from Firestore:', err);
-        setError('Error de conexión con la base de datos');
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Conectar con Firestore para candidates
-  useEffect(() => {
-    const candidatesQuery = query(collection(db, 'candidates'), orderBy('timestamp', 'desc'));
-    
-    const unsubscribe = onSnapshot(candidatesQuery, 
-      (snapshot) => {
-        try {
-          const candidatesData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          setCandidates(candidatesData);
-        } catch (err) {
-          console.error('Error fetching candidates:', err);
-        }
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
-
-  // Calcular estadísticas desde los reportes
-  const calculateStats = (reportsData: any[]) => {
+  // Calcular estadísticas (¡CORREGIDO CON useCallback!)
+  const calculateStats = useCallback((reportsData: any[]) => {
     let totalVotes = 0;
     const candidateTotals: { [key: string]: number } = {};
     
@@ -147,7 +92,60 @@ export default function Dashboard() {
       votes: candidateTotals[cand.id] || 0
     }));
     setCandidateList(candidateData);
-  };
+  }, [candidates]); // ← Dependencia explícita
+
+  // Conectar con Firestore para reports (¡CORREGIDO SIN ESLINT ERROR!)
+  useEffect(() => {
+    const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        try {
+          const reportsData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          calculateStats(reportsData);
+          setLoading(false);
+          setError(null);
+        } catch (err) {
+          console.error('Error processing reports:', err);
+          setError('Error al procesar los datos');
+          setLoading(false);
+        }
+      },
+      (err) => {
+        console.error('Error fetching reports from Firestore:', err);
+        setError('Error de conexión con la base de datos');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [calculateStats]); // ← calculateStats estable gracias a useCallback
+
+  // Conectar con Firestore para candidates
+  useEffect(() => {
+    const candidatesQuery = query(collection(db, 'candidates'), orderBy('timestamp', 'desc'));
+    
+    const unsubscribe = onSnapshot(candidatesQuery, 
+      (snapshot) => {
+        try {
+          const candidatesData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          setCandidates(candidatesData);
+        } catch (err) {
+          console.error('Error fetching candidates:', err);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   // Formateador seguro para números
   const formatNumber = (value: number | string | undefined): string => {
@@ -157,11 +155,11 @@ export default function Dashboard() {
     return String(value || 0);
   };
 
-  // Compartir por WhatsApp (CORREGIDO: espacio extra eliminado)
+  // Compartir por WhatsApp (¡CORREGIDO: espacios eliminados!)
   const shareByWhatsApp = () => {
     const url = `${window.location.origin}/${selectedMunicipio}`;
     const message = `Accede aquí para reportar votos en ${getMunicipioName(selectedMunicipio)}: ${url}`;
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`; // ✅ Espacio eliminado
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`; // ✅ SIN ESPACIOS
     window.open(whatsappUrl, '_blank');
   };
 
@@ -243,8 +241,8 @@ export default function Dashboard() {
   const handleCandidateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!candidateForm.name || !candidateForm.party) {
-      alert('⚠️ Por favor complete al menos el nombre y el partido del candidato');
+    if (!candidateForm.name || !candidateForm.party || !candidateForm.ballotNumber) {
+      alert('⚠️ Por favor complete el nombre, partido y número de tarjetón del candidato');
       return;
     }
 
@@ -259,13 +257,14 @@ export default function Dashboard() {
 
       await addDoc(collection(db, 'candidates'), candidateData);
       
-      // Reset form y preview
+      // Reset form y preview (¡INCLUYE ballotNumber!)
       setCandidateForm({
         name: '',
         party: '',
         color: '#3b82f6',
         imageUrl: '',
-        position: 'gobernacion'
+        position: 'gobernacion',
+        ballotNumber: '' // ← ¡RESET CORRECTO!
       });
       setImagePreview(null);
       if (fileInputRef.current) {
@@ -404,14 +403,15 @@ export default function Dashboard() {
           <button
             onClick={() => {
               setShowCandidateForm(!showCandidateForm);
-              // Limpiar formulario al cerrar
+              // Limpiar formulario al cerrar (¡INCLUYE ballotNumber!)
               if (showCandidateForm) {
                 setCandidateForm({
                   name: '',
                   party: '',
                   color: '#3b82f6',
                   imageUrl: '',
-                  position: 'gobernacion'
+                  position: 'gobernacion',
+                  ballotNumber: '' // ← ¡RESET AL CERRAR!
                 });
                 setImagePreview(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
@@ -462,6 +462,26 @@ export default function Dashboard() {
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Ej: Partido Verde"
                 />
+              </div>
+              
+              {/* ¡NUEVO CAMPO: Número de Tarjetón! */}
+              <div>
+                <label htmlFor="candidateBallotNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                  Número de Tarjetón <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  id="candidateBallotNumber"
+                  name="ballotNumber"
+                  value={candidateForm.ballotNumber}
+                  onChange={handleCandidateChange}
+                  required
+                  min="1"
+                  max="999"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Ej: 1"
+                />
+                <p className="text-xs text-gray-500 mt-1">Número único en la boleta electoral</p>
               </div>
               
               <div>
@@ -602,7 +622,8 @@ export default function Dashboard() {
                       party: '',
                       color: '#3b82f6',
                       imageUrl: '',
-                      position: 'gobernacion'
+                      position: 'gobernacion',
+                      ballotNumber: '' // ← ¡RESET EN CANCELAR!
                     });
                     setImagePreview(null);
                     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -663,7 +684,7 @@ export default function Dashboard() {
                           className="w-14 h-14 rounded-full object-cover border-2" 
                           style={{ borderColor: candidate.color || '#3b82f6' }}
                           onError={(e) => {
-                            // Fallback si la imagen no carga
+                            // Fallback si la imagen no carga (¡CORREGIDO SIN ESPACIOS!)
                             (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=${candidate.color?.replace('#', '') || '3b82f6'}&color=fff`;
                           }}
                         />
@@ -694,6 +715,10 @@ export default function Dashboard() {
                         }}
                       >
                         {ELECTION_TYPES.find(t => t.id === candidate.position)?.label || candidate.position}
+                      </div>
+                      {/* ¡MOSTRAR NÚMERO DE TARJETÓN! */}
+                      <div className="mt-1 text-xs font-bold text-blue-600">
+                        Tarjetón #{candidate.ballotNumber || '?'}
                       </div>
                     </div>
                   </div>
@@ -832,6 +857,8 @@ export default function Dashboard() {
                   <div>
                     <h3 className="font-bold text-gray-800">{candidate.name}</h3>
                     <p className="text-sm text-gray-500">{candidate.party} • {candidate.position}</p>
+                    {/* ¡MOSTRAR NÚMERO DE TARJETÓN! */}
+                    <p className="text-xs font-bold text-blue-600 mt-1">Tarjetón #{candidate.ballotNumber || '?'}</p>
                   </div>
                 </div>
                 <div className="text-right">
