@@ -33,6 +33,7 @@ export default function WitnessForm() {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [votes, setVotes] = useState<{ [key: string]: number }>({});
   const [blankVotes, setBlankVotes] = useState(0);
+  const [candidatesLoaded, setCandidatesLoaded] = useState(false);
 
   // Estado para irregularidades
   const [hasIrregularity, setHasIrregularity] = useState(false);
@@ -44,7 +45,7 @@ export default function WitnessForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  // Cargar candidatos desde Firestore
+  // Cargar candidatos desde Firestore al montar el componente
   useEffect(() => {
     const fetchCandidates = async () => {
       try {
@@ -59,15 +60,29 @@ export default function WitnessForm() {
             initialVotes[cand.id] = 0;
           });
           setVotes(initialVotes);
+          setCandidatesLoaded(true);
+        } else {
+          // Fallback: candidatos básicos si falla la carga
+          const fallbackCandidates = [
+            { id: 'cand1', name: 'Carlos Gómez', party: 'Partido Verde', color: '#2a9d8f' },
+            { id: 'cand2', name: 'María López', party: 'Cambio Radical', color: '#1a3a6c' },
+            { id: 'cand3', name: 'Juan Ramírez', party: 'Conservador', color: '#e63946' },
+            { id: 'cand4', name: 'Ana Castro', party: 'Alianza Social', color: '#6c5b7b' }
+          ];
+          setCandidates(fallbackCandidates);
+          const initialVotes: { [key: string]: number } = {};
+          fallbackCandidates.forEach(cand => {
+            initialVotes[cand.id] = 0;
+          });
+          setVotes(initialVotes);
+          setCandidatesLoaded(true);
         }
       } catch (error) {
         console.error('Error cargando candidatos:', error);
-        // Candidatos fallback si falla la carga
+        // Fallback mínimo para evitar errores
         const fallbackCandidates = [
-          { id: 'cand1', name: 'Carlos Gómez', party: 'Partido Verde', color: '#2a9d8f' },
-          { id: 'cand2', name: 'María López', party: 'Cambio Radical', color: '#1a3a6c' },
-          { id: 'cand3', name: 'Juan Ramírez', party: 'Conservador', color: '#e63946' },
-          { id: 'cand4', name: 'Ana Castro', party: 'Alianza Social', color: '#6c5b7b' }
+          { id: 'cand1', name: 'Candidato 1', party: 'Partido A', color: '#2a9d8f' },
+          { id: 'cand2', name: 'Candidato 2', party: 'Partido B', color: '#1a3a6c' }
         ];
         setCandidates(fallbackCandidates);
         const initialVotes: { [key: string]: number } = {};
@@ -75,6 +90,7 @@ export default function WitnessForm() {
           initialVotes[cand.id] = 0;
         });
         setVotes(initialVotes);
+        setCandidatesLoaded(true);
       }
     };
     fetchCandidates();
@@ -108,6 +124,12 @@ export default function WitnessForm() {
   // Manejar envío del formulario
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validación: debe haber al menos un candidato
+    if (candidates.length === 0) {
+      setSubmitError('⚠️ No hay candidatos registrados. Por favor, agregue candidatos desde el Dashboard primero.');
+      return;
+    }
     
     // Validación básica
     if (totalVotes === 0) {
@@ -363,43 +385,69 @@ export default function WitnessForm() {
             Resultados de la Mesa
           </h2>
           
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-            {candidates.map((candidate) => (
-              <div key={candidate.id} className="text-center">
-                <div className="font-medium text-sm mb-1 truncate" title={candidate.name}>
-                  {candidate.name.split(' ')[0]}
+          {/* Mensaje si no hay candidatos */}
+          {!candidatesLoaded ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">Cargando candidatos...</p>
+            </div>
+          ) : candidates.length === 0 ? (
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-6">
+              <div className="flex">
+                <svg className="w-5 h-5 text-yellow-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className="text-yellow-700 font-medium">
+                    ⚠️ No hay candidatos registrados
+                  </p>
+                  <p className="text-yellow-600 mt-1">
+                    El equipo de campaña debe agregar candidatos desde el Dashboard antes de poder reportar votos.
+                  </p>
                 </div>
-                <div className="text-xs text-gray-500 mb-1">{candidate.party}</div>
-                <input
-                  type="number"
-                  value={votes[candidate.id] || 0}
-                  onChange={(e) => handleVoteChange(candidate.id, e.target.value)}
-                  min="0"
-                  className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold"
-                  placeholder="0"
-                />
               </div>
-            ))}
-            
-            <div className="text-center">
-              <div className="font-medium text-sm mb-1">Votos en Blanco</div>
-              <input
-                type="number"
-                value={blankVotes}
-                onChange={(e) => handleVoteChange('blank', e.target.value)}
-                min="0"
-                className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold text-gray-500"
-                placeholder="0"
-              />
             </div>
-          </div>
-          
-          <div className="mt-4 pt-4 border-t border-gray-100 bg-gray-50 rounded-lg p-3">
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">Total de Votos:</span>
-              <span className="text-2xl font-bold text-blue-600">{totalVotes.toLocaleString('es-CO')}</span>
-            </div>
-          </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                {candidates.map((candidate) => (
+                  <div key={candidate.id} className="text-center">
+                    <div className="font-medium text-sm mb-1 truncate" title={candidate.name}>
+                      {candidate.name.split(' ')[0]}
+                    </div>
+                    <div className="text-xs text-gray-500 mb-1">{candidate.party}</div>
+                    <input
+                      type="number"
+                      value={votes[candidate.id] || 0}
+                      onChange={(e) => handleVoteChange(candidate.id, e.target.value)}
+                      min="0"
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold"
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
+                
+                <div className="text-center">
+                  <div className="font-medium text-sm mb-1">Votos en Blanco</div>
+                  <input
+                    type="number"
+                    value={blankVotes}
+                    onChange={(e) => handleVoteChange('blank', e.target.value)}
+                    min="0"
+                    className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold text-gray-500"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-4 pt-4 border-t border-gray-100 bg-gray-50 rounded-lg p-3">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-gray-700">Total de Votos:</span>
+                  <span className="text-2xl font-bold text-blue-600">{totalVotes.toLocaleString('es-CO')}</span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Sección 4: Irregularidades */}
@@ -485,11 +533,11 @@ export default function WitnessForm() {
         <div className="pt-4 border-t border-gray-200">
           <button
             type="submit"
-            disabled={isSubmitting || totalVotes === 0}
+            disabled={isSubmitting || totalVotes === 0 || candidates.length === 0 || !candidatesLoaded}
             className={`w-full font-bold py-3.5 px-6 rounded-xl text-lg shadow-md transition-all transform focus:outline-none focus:ring-2 focus:ring-offset-2 ${
               isSubmitting
                 ? 'bg-blue-400 cursor-wait'
-                : totalVotes === 0
+                : totalVotes === 0 || candidates.length === 0 || !candidatesLoaded
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700 text-white hover:shadow-lg hover:-translate-y-0.5 focus:ring-green-500'
             }`}
@@ -502,6 +550,8 @@ export default function WitnessForm() {
                 </svg>
                 Enviando reporte...
               </span>
+            ) : candidates.length === 0 ? (
+              'Esperando candidatos del Dashboard'
             ) : totalVotes === 0 ? (
               'Ingrese votos para enviar'
             ) : (
