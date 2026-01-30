@@ -1,9 +1,8 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useSearchParams } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
 import WitnessForm from './components/WitnessForm';
 import AlertsView from './components/AlertsView';
-import { getMunicipalityIds } from './config/municipalities';
 
 function Navigation() {
   const [searchParams, setSearchParams] = useSearchParams();
