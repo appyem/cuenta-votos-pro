@@ -396,6 +396,37 @@ export default function Dashboard() {
         </div>
       </div>
 
+
+      {/* Enlace para Pantalla de Resultados Públicos */}
+      <div className="mt-6 p-4 bg-purple-50 rounded-lg border border-purple-200">
+        <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center">
+          <svg className="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2-4h10m-6 2a2 2 0 100-4H5a2 2 0 000 4h14a2 2 0 000-4h-6m-2 4h10" />
+          </svg>
+          Pantalla Pública de Resultados
+        </h3>
+        <p className="text-sm text-gray-600 mb-3">
+          URL para proyectar resultados en tiempo real en pantallas grandes (TV, proyectores, etc.)
+        </p>
+        <div className="flex items-center">
+          <code className="flex-1 bg-white p-3 rounded border text-sm font-mono truncate">
+            {window.location.origin}/resultados
+          </code>
+          <button
+            onClick={() => navigator.clipboard.writeText(`${window.location.origin}/resultados`)}
+            className="ml-3 bg-purple-600 hover:bg-purple-700 text-white p-3 rounded-lg transition-colors"
+            title="Copiar enlace"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+        </div>
+        <p className="text-xs text-purple-600 mt-2">
+          ✅ Vista optimizada para pantallas grandes • Actualización en tiempo real • Sin controles (solo lectura)
+        </p>
+      </div>
+
       {/* Gestión de Candidatos */}
       <div className="bg-white rounded-xl shadow-md p-6">
         <div className="flex justify-between items-center mb-4">

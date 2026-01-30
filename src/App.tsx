@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, useSearchParams } from 'react-r
 import Dashboard from './components/Dashboard';
 import WitnessForm from './components/WitnessForm';
 import AlertsView from './components/AlertsView';
+import ResultsDisplay from './components/ResultsDisplay'; // ✅ ¡NUEVO IMPORT!
 
 function Navigation() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -54,6 +55,18 @@ function Navigation() {
           </svg>
           Reportar Votos
         </button>
+        {/* ✅ ¡NUEVO BOTÓN EN NAVEGACIÓN! */}
+        <a
+          href="/resultados"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="px-6 py-2 rounded-xl font-bold text-lg flex items-center bg-purple-600 text-white hover:bg-purple-700 transition-colors shadow-md"
+        >
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2-4h10m-6 2a2 2 0 100-4H5a2 2 0 000 4h14a2 2 0 000-4h-6m-2 4h10" />
+          </svg>
+          Pantalla Pública
+        </a>
       </div>
     </nav>
   );
@@ -103,6 +116,18 @@ function MobileNavigation() {
           </svg>
           <span className="text-xs mt-1 font-medium">Reportar</span>
         </button>
+        {/* ✅ ¡NUEVO BOTÓN MÓVIL! */}
+        <a
+          href="/resultados"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex flex-col items-center p-2 text-purple-600"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2-4h10m-6 2a2 2 0 100-4H5a2 2 0 000 4h14a2 2 0 000-4h-6m-2 4h10" />
+          </svg>
+          <span className="text-xs mt-1 font-medium">Resultados</span>
+        </a>
       </div>
     </nav>
   );
@@ -170,12 +195,13 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<AppContent />} />
-        <Route path="/:municipioId" element={<WitnessForm />} />
+        {/* ✅ ¡RUTAS EN ORDEN CORRECTO! */}
+        <Route path="/resultados" element={<ResultsDisplay />} /> {/* Primero: ruta específica */}
+        <Route path="/:municipioId" element={<WitnessForm />} /> {/* Segundo: ruta dinámica */}
+        <Route path="/" element={<AppContent />} /> {/* Tercero: ruta raíz */}
       </Routes>
     </Router>
   );
 }
 
 export default App;
-
