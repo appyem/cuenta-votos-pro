@@ -1,25 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
-
-// Puestos de votación para Manizales (simulados)
-const VOTING_PLACES = [
-  "Las Américas",
-  "Coliseo Mayor",
-  "Gobernación de Caldas",
-  "Universidad de Caldas",
-  "Liceo Departamental",
-  "Escuela Normal",
-  "Centro de Convenciones"
-];
-
-// Candidatos para la elección
-const CANDIDATES = [
-  { id: 'cand1', name: 'Carlos Gómez', party: 'Partido Verde' },
-  { id: 'cand2', name: 'María López', party: 'Cambio Radical' },
-  { id: 'cand3', name: 'Juan Ramírez', party: 'Conservador' },
-  { id: 'cand4', name: 'Ana Castro', party: 'Alianza Social' }
-];
+import { MUNICIPALITIES, Municipality } from '../config/municipalities';
+import { useParams } from 'react-router-dom';
 
 // Tipos de irregularidades
 const IRREGULARITY_TYPES = [
@@ -30,6 +13,13 @@ const IRREGULARITY_TYPES = [
 ];
 
 export default function WitnessForm() {
+  // Obtener municipio de la URL
+  const { municipioId } = useParams<{ municipioId: string }>();
+  const municipioParam = municipioId || 'manizales';
+  
+  // Obtener datos del municipio
+  const municipioData: Municipality | undefined = MUNICIPALITIES.find(m => m.id === municipioParam);
+  
   // Estado para los datos del testigo
   const [formData, setFormData] = useState({
     name: '',
@@ -39,16 +29,9 @@ export default function WitnessForm() {
     tableNumber: ''
   });
 
-  // Estado para los votos por candidato
-  const [votes, setVotes] = useState<{ [key: string]: number }>(() => {
-    const initialVotes: { [key: string]: number } = {};
-    CANDIDATES.forEach(cand => {
-      initialVotes[cand.id] = 0;
-    });
-    return initialVotes;
-  });
-
-  // Estado para votos en blanco
+  // Estado para candidatos (se cargarán desde Firestore)
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [votes, setVotes] = useState<{ [key: string]: number }>({});
   const [blankVotes, setBlankVotes] = useState(0);
 
   // Estado para irregularidades
@@ -60,6 +43,42 @@ export default function WitnessForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  // Cargar candidatos desde Firestore
+  useEffect(() => {
+    const fetchCandidates = async () => {
+      try {
+        const response = await fetch('/.netlify/functions/getCandidates');
+        if (response.ok) {
+          const data = await response.json();
+          setCandidates(data);
+          
+          // Inicializar votos con candidatos reales
+          const initialVotes: { [key: string]: number } = {};
+          data.forEach((cand: any) => {
+            initialVotes[cand.id] = 0;
+          });
+          setVotes(initialVotes);
+        }
+      } catch (error) {
+        console.error('Error cargando candidatos:', error);
+        // Candidatos fallback si falla la carga
+        const fallbackCandidates = [
+          { id: 'cand1', name: 'Carlos Gómez', party: 'Partido Verde', color: '#2a9d8f' },
+          { id: 'cand2', name: 'María López', party: 'Cambio Radical', color: '#1a3a6c' },
+          { id: 'cand3', name: 'Juan Ramírez', party: 'Conservador', color: '#e63946' },
+          { id: 'cand4', name: 'Ana Castro', party: 'Alianza Social', color: '#6c5b7b' }
+        ];
+        setCandidates(fallbackCandidates);
+        const initialVotes: { [key: string]: number } = {};
+        fallbackCandidates.forEach(cand => {
+          initialVotes[cand.id] = 0;
+        });
+        setVotes(initialVotes);
+      }
+    };
+    fetchCandidates();
+  }, []);
 
   // Manejar cambios en los inputs principales
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -129,7 +148,8 @@ export default function WitnessForm() {
         hasIrregularity,
         irregularityType: hasIrregularity ? irregularityType : '',
         observation: hasIrregularity ? observation.trim() : '',
-        municipio: 'Manizales',
+        municipio: municipioData?.name || municipioParam,
+        municipioId: municipioParam,
         timestamp: serverTimestamp(),
         status: 'pending'
       };
@@ -143,13 +163,11 @@ export default function WitnessForm() {
       // Limpiar formulario después de 2 segundos
       setTimeout(() => {
         setFormData({ name: '', id: '', phone: '', votingPlace: '', tableNumber: '' });
-        setVotes(() => {
-          const initialVotes: { [key: string]: number } = {};
-          CANDIDATES.forEach(cand => {
-            initialVotes[cand.id] = 0;
-          });
-          return initialVotes;
+        const resetVotes: { [key: string]: number } = {};
+        candidates.forEach(cand => {
+          resetVotes[cand.id] = 0;
         });
+        setVotes(resetVotes);
         setBlankVotes(0);
         setHasIrregularity(false);
         setIrregularityType('');
@@ -165,6 +183,24 @@ export default function WitnessForm() {
     }
   };
 
+  // Si el municipio no existe, mostrar mensaje de error
+  if (!municipioData) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-center">
+          <div className="text-2xl text-red-600 mb-4">⚠️ Municipio no válido</div>
+          <p className="text-gray-600 mb-4">La URL del municipio no es correcta.</p>
+          <a 
+            href="/manizales" 
+            className="text-blue-600 hover:underline font-medium"
+          >
+            Volver a Manizales
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto">
       {/* Header del formulario */}
@@ -176,7 +212,12 @@ export default function WitnessForm() {
           Reporte Electoral
         </div>
         <h1 className="text-3xl font-bold text-gray-800">Reporte de Testigo</h1>
-        <p className="text-gray-600 mt-2">Municipio: <span className="font-semibold text-blue-600">Manizales</span></p>
+        <p className="text-gray-600 mt-2">
+          Municipio: <span className="font-semibold text-blue-600">{municipioData.name}</span>
+        </p>
+        <p className="text-sm text-gray-500 mt-1">
+          Mesas totales: {municipioData.tables.toLocaleString('es-CO')}
+        </p>
       </div>
 
       {/* Formulario */}
@@ -281,11 +322,13 @@ export default function WitnessForm() {
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
               >
                 <option value="">Seleccione un puesto</option>
-                {VOTING_PLACES.map((place) => (
+                {municipioData.votingPlaces.map((place) => (
                   <option key={place} value={place}>{place}</option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">Puestos disponibles en Manizales</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Puestos disponibles en {municipioData.name}
+              </p>
             </div>
             
             <div>
@@ -300,11 +343,13 @@ export default function WitnessForm() {
                 onChange={handleChange}
                 required
                 min="1"
-                max="902"
+                max={municipioData.tables}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Ej: 156"
+                placeholder={`Ej: 1 - ${municipioData.tables}`}
               />
-              <p className="text-xs text-gray-500 mt-1">Rango: 1 - 902 (Manizales)</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Rango: 1 - {municipioData.tables.toLocaleString('es-CO')}
+              </p>
             </div>
           </div>
         </div>
@@ -319,7 +364,7 @@ export default function WitnessForm() {
           </h2>
           
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-            {CANDIDATES.map((candidate) => (
+            {candidates.map((candidate) => (
               <div key={candidate.id} className="text-center">
                 <div className="font-medium text-sm mb-1 truncate" title={candidate.name}>
                   {candidate.name.split(' ')[0]}
@@ -357,7 +402,7 @@ export default function WitnessForm() {
           </div>
         </div>
 
-        {/* Sección 4: Irregularidades (NUEVA) */}
+        {/* Sección 4: Irregularidades */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -481,7 +526,8 @@ export default function WitnessForm() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <p className="text-sm text-blue-800">
-            <strong>Importante:</strong> Si marca una irregularidad, se generará una alerta prioritaria en el dashboard del equipo de campaña. Proporcione detalles precisos para una respuesta rápida.
+            <strong>Importante:</strong> Esta es la URL oficial para testigos de {municipioData.name}. 
+            Comparta este enlace solo con testigos acreditados de este municipio.
           </p>
         </div>
       </div>

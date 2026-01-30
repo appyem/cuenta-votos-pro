@@ -4,14 +4,6 @@ import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, delete
 import { db } from '../config/firebase';
 import { MUNICIPALITIES } from '../config/municipalities';
 
-// Candidatos (se cargarán desde Firestore)
-const CANDIDATES = [
-  { id: 'cand1', name: 'Carlos Gómez', party: 'Partido Verde', color: '#2a9d8f', position: 'Gobernación' },
-  { id: 'cand2', name: 'María López', party: 'Cambio Radical', color: '#1a3a6c', position: 'Alcaldía' },
-  { id: 'cand3', name: 'Juan Ramírez', party: 'Conservador', color: '#e63946', position: 'Senado' },
-  { id: 'cand4', name: 'Ana Castro', party: 'Alianza Social', color: '#6c5b7b', position: 'Cámara' }
-];
-
 // Tipos de elección
 const ELECTION_TYPES = [
   { id: 'presidencia', label: 'Presidencia' },
@@ -83,7 +75,7 @@ export default function Dashboard() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [candidates]); // Recalcular cuando cambien los candidatos
 
   // Conectar con Firestore para candidates
   useEffect(() => {
@@ -107,12 +99,13 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
-  // Calcular estadísticas desde los reportes
+  // Calcular estadísticas desde los reportes (usa candidatos reales)
   const calculateStats = (reportsData: any[]) => {
     let totalVotes = 0;
     const candidateTotals: { [key: string]: number } = {};
     
-    CANDIDATES.forEach(cand => {
+    // Inicializar con candidatos reales de Firestore
+    candidates.forEach(cand => {
       candidateTotals[cand.id] = 0;
     });
 
@@ -134,14 +127,16 @@ export default function Dashboard() {
       activeAlerts: reportsData.filter(r => r.hasIrregularity && !r.resolved).length
     });
 
-    const chartData = CANDIDATES.map(cand => ({
+    // Preparar datos para el gráfico usando candidatos reales
+    const chartData = candidates.map(cand => ({
       name: cand.name.split(' ')[0],
       votes: candidateTotals[cand.id] || 0,
-      color: cand.color
+      color: cand.color || '#3b82f6'
     }));
     setVotesChartData(chartData);
 
-    const candidateData = CANDIDATES.map(cand => ({
+    // Preparar lista de candidatos con votos
+    const candidateData = candidates.map(cand => ({
       ...cand,
       votes: candidateTotals[cand.id] || 0
     }));
@@ -223,6 +218,7 @@ export default function Dashboard() {
     
     try {
       await deleteDoc(doc(db, 'candidates', candidateId));
+      alert('✅ Candidato eliminado exitosamente');
     } catch (error) {
       console.error('Error deleting candidate:', error);
       alert('Error al eliminar el candidato');
@@ -330,272 +326,267 @@ export default function Dashboard() {
       </div>
 
       {/* Gestión de Candidatos */}
-<div className="bg-white rounded-xl shadow-md p-6">
-  <div className="flex justify-between items-center mb-4">
-    <h2 className="text-xl font-bold text-gray-800">Administrar Candidatos</h2>
-    <button
-      onClick={() => setShowCandidateForm(!showCandidateForm)}
-      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors flex items-center"
-    >
-      <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-      </svg>
-      {showCandidateForm ? 'Ocultar Formulario' : 'Agregar Candidato'}
-    </button>
-  </div>
-
-  {/* Formulario de Candidato (colapsable) */}
-  {showCandidateForm && (
-    <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-      <h3 className="text-lg font-bold text-gray-800 mb-4">Nuevo Candidato</h3>
-      <form onSubmit={handleCandidateSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Nombre y Partido */}
-        <div className="md:col-span-2">
-          <label htmlFor="candidateName" className="block text-sm font-medium text-gray-700 mb-1">
-            Nombre Completo del Candidato <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            id="candidateName"
-            name="name"
-            value={candidateForm.name}
-            onChange={handleCandidateChange}
-            required
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            placeholder="Ej: Carlos Eduardo Gómez Pérez"
-          />
-        </div>
-        
-        <div>
-          <label htmlFor="candidateParty" className="block text-sm font-medium text-gray-700 mb-1">
-            Partido Político <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            id="candidateParty"
-            name="party"
-            value={candidateForm.party}
-            onChange={handleCandidateChange}
-            required
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            placeholder="Ej: Partido Verde"
-          />
-        </div>
-        
-        {/* Tipo de Elección y Color */}
-        <div>
-          <label htmlFor="candidatePosition" className="block text-sm font-medium text-gray-700 mb-1">
-            Tipo de Elección <span className="text-red-500">*</span>
-          </label>
-          <select
-            id="candidatePosition"
-            name="position"
-            value={candidateForm.position}
-            onChange={handleCandidateChange}
-            required
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            {ELECTION_TYPES.map(type => (
-              <option key={type.id} value={type.id}>{type.label}</option>
-            ))}
-          </select>
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Color del Candidato <span className="text-red-500">*</span>
-          </label>
-          <div className="flex items-center space-x-3">
-            {/* Selector de color VISIBLE y FUNCIONAL */}
-            <div className="flex items-center space-x-2">
-              <input
-                type="color"
-                id="candidateColor"
-                name="color"
-                value={candidateForm.color}
-                onChange={handleCandidateChange}
-                className="w-12 h-10 rounded border cursor-pointer"
-                title="Seleccionar color"
-              />
-              <input
-                type="text"
-                value={candidateForm.color}
-                onChange={handleCandidateChange}
-                name="color"
-                className="w-24 px-2 py-1.5 border border-gray-300 rounded text-xs font-mono"
-                placeholder="#3b82f6"
-                maxLength={7}
-              />
-            </div>
-            {/* Vista previa del color */}
-            <div 
-              className="w-8 h-8 rounded-full border-2 border-white shadow-sm"
-              style={{ backgroundColor: candidateForm.color }}
-              title={`Color actual: ${candidateForm.color}`}
-            ></div>
-          </div>
-          <p className="text-xs text-gray-500 mt-1">Selecciona un color para gráficos y tarjetas</p>
-        </div>
-        
-        {/* URL de Imagen */}
-        <div className="md:col-span-2">
-          <label htmlFor="candidateImage" className="block text-sm font-medium text-gray-700 mb-1">
-            URL de la Foto del Candidato (opcional)
-          </label>
-          <input
-            type="url"
-            id="candidateImage"
-            name="imageUrl"
-            value={candidateForm.imageUrl}
-            onChange={handleCandidateChange}
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            placeholder="https://ejemplo.com/foto.jpg"
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Sube la foto a <a href="https://imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">ImgBB</a> y pega el enlace aquí
-          </p>
-        </div>
-        
-        {/* Botones de acción */}
-        <div className="md:col-span-2 flex space-x-3 pt-2">
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-800">Administrar Candidatos</h2>
           <button
-            type="submit"
-            disabled={isSubmittingCandidate}
-            className={`flex-1 font-bold py-2.5 px-4 rounded-lg transition-colors ${
-              isSubmittingCandidate
-                ? 'bg-blue-400 cursor-wait'
-                : 'bg-green-600 hover:bg-green-700 text-white'
-            }`}
+            onClick={() => setShowCandidateForm(!showCandidateForm)}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors flex items-center"
           >
-            {isSubmittingCandidate ? (
-              <span className="flex items-center justify-center">
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Guardando...
-              </span>
-            ) : (
-              <>
-                <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Guardar Candidato
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setCandidateForm({
-                name: '',
-                party: '',
-                color: '#3b82f6',
-                imageUrl: '',
-                position: 'gobernacion'
-              });
-              setShowCandidateForm(false);
-            }}
-            className="px-4 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Cancelar
+            <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            {showCandidateForm ? 'Ocultar Formulario' : 'Agregar Candidato'}
           </button>
         </div>
-      </form>
-    </div>
-  )}
 
-  {/* Lista de Candidatos con BOTÓN DE ELIMINAR VISIBLE */}
-  <div>
-    <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
-      <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-      </svg>
-      Candidatos Registrados ({candidates.length})
-    </h3>
-    
-    {candidates.length === 0 ? (
-      <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-        <div className="text-4xl mb-3">🗳️</div>
-        <p className="text-gray-600 font-medium">No hay candidatos registrados</p>
-        <p className="text-gray-500 mt-1">Haz clic en "Agregar Candidato" para crear el primero</p>
-      </div>
-    ) : (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {candidates.map((candidate) => (
-          <div 
-            key={candidate.id} 
-            className="border-2 rounded-xl p-4 hover:shadow-md transition-all duration-200 relative group"
-            style={{ borderColor: candidate.color || '#3b82f6' }}
-          >
-            {/* BOTÓN DE ELIMINAR SIEMPRE VISIBLE EN LA ESQUINA SUPERIOR DERECHA */}
-            <button
-              onClick={() => handleDeleteCandidate(candidate.id)}
-              className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200 hover:text-red-800 transition-colors shadow-sm z-10"
-              title="Eliminar candidato"
-              aria-label={`Eliminar candidato ${candidate.name}`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
-            
-            <div className="mt-4 flex items-start">
-              <div className="flex-shrink-0">
-                {candidate.imageUrl ? (
-                  <img 
-                    src={candidate.imageUrl} 
-                    alt={candidate.name} 
-                    className="w-14 h-14 rounded-full object-cover border-2" 
-                    style={{ borderColor: candidate.color || '#3b82f6' }}
-                  />
-                ) : (
-                  <div 
-                    className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-bold border-2"
-                    style={{ 
-                      backgroundColor: (candidate.color || '#3b82f6') + 'cc',
-                      borderColor: candidate.color || '#3b82f6'
-                    }}
-                  >
-                    {candidate.name.charAt(0)}
-                  </div>
-                )}
+        {/* Formulario de Candidato (colapsable) */}
+        {showCandidateForm && (
+          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Nuevo Candidato</h3>
+            <form onSubmit={handleCandidateSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label htmlFor="candidateName" className="block text-sm font-medium text-gray-700 mb-1">
+                  Nombre Completo del Candidato <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="candidateName"
+                  name="name"
+                  value={candidateForm.name}
+                  onChange={handleCandidateChange}
+                  required
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Ej: Carlos Eduardo Gómez Pérez"
+                />
               </div>
-              <div className="ml-3 flex-1 min-w-0">
-                <h4 className="font-bold text-gray-900 truncate" title={candidate.name}>
-                  {candidate.name}
-                </h4>
-                <p className="text-sm text-gray-600 truncate" title={candidate.party}>
-                  {candidate.party}
-                </p>
-                <div 
-                  className="mt-2 inline-block px-2 py-0.5 rounded text-xs font-medium"
-                  style={{ 
-                    backgroundColor: (candidate.color || '#3b82f6') + '15',
-                    color: candidate.color || '#3b82f6'
-                  }}
+              
+              <div>
+                <label htmlFor="candidateParty" className="block text-sm font-medium text-gray-700 mb-1">
+                  Partido Político <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="candidateParty"
+                  name="party"
+                  value={candidateForm.party}
+                  onChange={handleCandidateChange}
+                  required
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Ej: Partido Verde"
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="candidatePosition" className="block text-sm font-medium text-gray-700 mb-1">
+                  Tipo de Elección <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="candidatePosition"
+                  name="position"
+                  value={candidateForm.position}
+                  onChange={handleCandidateChange}
+                  required
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  {ELECTION_TYPES.find(t => t.id === candidate.position)?.label || candidate.position}
-                </div>
+                  {ELECTION_TYPES.map(type => (
+                    <option key={type.id} value={type.id}>{type.label}</option>
+                  ))}
+                </select>
               </div>
-            </div>
-            
-            {/* Vista previa del color en la parte inferior */}
-            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-xs text-gray-500">Color:</span>
-              <div 
-                className="w-6 h-6 rounded-full border border-gray-300"
-                style={{ backgroundColor: candidate.color || '#3b82f6' }}
-                title={`Color: ${candidate.color}`}
-              ></div>
-            </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Color del Candidato <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="color"
+                      id="candidateColor"
+                      name="color"
+                      value={candidateForm.color}
+                      onChange={handleCandidateChange}
+                      className="w-12 h-10 rounded border cursor-pointer"
+                      title="Seleccionar color"
+                    />
+                    <input
+                      type="text"
+                      value={candidateForm.color}
+                      onChange={handleCandidateChange}
+                      name="color"
+                      className="w-24 px-2 py-1.5 border border-gray-300 rounded text-xs font-mono"
+                      placeholder="#3b82f6"
+                      maxLength={7}
+                    />
+                  </div>
+                  <div 
+                    className="w-8 h-8 rounded-full border-2 border-white shadow-sm"
+                    style={{ backgroundColor: candidateForm.color }}
+                    title={`Color actual: ${candidateForm.color}`}
+                  ></div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Selecciona un color para gráficos y tarjetas</p>
+              </div>
+              
+              <div className="md:col-span-2">
+                <label htmlFor="candidateImage" className="block text-sm font-medium text-gray-700 mb-1">
+                  URL de la Foto del Candidato (opcional)
+                </label>
+                <input
+                  type="url"
+                  id="candidateImage"
+                  name="imageUrl"
+                  value={candidateForm.imageUrl}
+                  onChange={handleCandidateChange}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="https://ejemplo.com/foto.jpg"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Sube la foto a <a href="https://imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">ImgBB</a> y pega el enlace aquí
+                </p>
+              </div>
+              
+              <div className="md:col-span-2 flex space-x-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={isSubmittingCandidate}
+                  className={`flex-1 font-bold py-2.5 px-4 rounded-lg transition-colors ${
+                    isSubmittingCandidate
+                      ? 'bg-blue-400 cursor-wait'
+                      : 'bg-green-600 hover:bg-green-700 text-white'
+                  }`}
+                >
+                  {isSubmittingCandidate ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Guardando...
+                    </span>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5 mr-1 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Guardar Candidato
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCandidateForm({
+                      name: '',
+                      party: '',
+                      color: '#3b82f6',
+                      imageUrl: '',
+                      position: 'gobernacion'
+                    });
+                    setShowCandidateForm(false);
+                  }}
+                  className="px-4 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
           </div>
-        ))}
-      </div>
-    )}
-  </div>
-</div>
+        )}
 
+        {/* Lista de Candidatos con BOTÓN DE ELIMINAR VISIBLE */}
+        <div>
+          <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+            <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            Candidatos Registrados ({candidates.length})
+          </h3>
+          
+          {candidates.length === 0 ? (
+            <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+              <div className="text-4xl mb-3">🗳️</div>
+              <p className="text-gray-600 font-medium">No hay candidatos registrados</p>
+              <p className="text-gray-500 mt-1">
+                Agrega candidatos desde el Dashboard principal usando el formulario "Administrar Candidatos"
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {candidates.map((candidate) => (
+                <div 
+                  key={candidate.id} 
+                  className="border-2 rounded-xl p-4 hover:shadow-md transition-all duration-200 relative group"
+                  style={{ borderColor: candidate.color || '#3b82f6' }}
+                >
+                  {/* BOTÓN DE ELIMINAR SIEMPRE VISIBLE */}
+                  <button
+                    onClick={() => handleDeleteCandidate(candidate.id)}
+                    className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200 hover:text-red-800 transition-colors shadow-sm z-10"
+                    title="Eliminar candidato"
+                    aria-label={`Eliminar candidato ${candidate.name}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                  
+                  <div className="mt-4 flex items-start">
+                    <div className="flex-shrink-0">
+                      {candidate.imageUrl ? (
+                        <img 
+                          src={candidate.imageUrl} 
+                          alt={candidate.name} 
+                          className="w-14 h-14 rounded-full object-cover border-2" 
+                          style={{ borderColor: candidate.color || '#3b82f6' }}
+                        />
+                      ) : (
+                        <div 
+                          className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-bold border-2"
+                          style={{ 
+                            backgroundColor: (candidate.color || '#3b82f6') + 'cc',
+                            borderColor: candidate.color || '#3b82f6'
+                          }}
+                        >
+                          {candidate.name.charAt(0)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="ml-3 flex-1 min-w-0">
+                      <h4 className="font-bold text-gray-900 truncate" title={candidate.name}>
+                        {candidate.name}
+                      </h4>
+                      <p className="text-sm text-gray-600 truncate" title={candidate.party}>
+                        {candidate.party}
+                      </p>
+                      <div 
+                        className="mt-2 inline-block px-2 py-0.5 rounded text-xs font-medium"
+                        style={{ 
+                          backgroundColor: (candidate.color || '#3b82f6') + '15',
+                          color: candidate.color || '#3b82f6'
+                        }}
+                      >
+                        {ELECTION_TYPES.find(t => t.id === candidate.position)?.label || candidate.position}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Vista previa del color */}
+                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Color:</span>
+                    <div 
+                      className="w-6 h-6 rounded-full border border-gray-300"
+                      style={{ backgroundColor: candidate.color || '#3b82f6' }}
+                      title={`Color: ${candidate.color}`}
+                    ></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Tarjetas de estadísticas */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -626,96 +617,116 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Gráfico de votos */}
-      <div className="bg-white rounded-xl shadow-md p-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Votos por Candidato (Todos los municipios)</h2>
-        <div className="h-96">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart 
-              data={votesChartData} 
-              margin={{ top: 20, right: 30, left: 20, bottom: 30 }}
-              barSize={40}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis 
-                dataKey="name" 
-                stroke="#6b7280"
-                tick={{ fontSize: 12 }}
-                height={70}
-                interval={0}
-                angle={-25}
-                textAnchor="end"
-                padding={{ left: 20, right: 20 }}
-              />
-              <YAxis 
-                stroke="#6b7280"
-                tickFormatter={formatNumber}
-                width={90}
-              />
-              <Tooltip 
-                formatter={(value: number | [number, number] | undefined) => {
-                  if (Array.isArray(value)) {
-                    return [`${value[0].toLocaleString('es-CO')} - ${value[1].toLocaleString('es-CO')}`, 'Rango'];
-                  }
-                  return [formatNumber(value), 'Votos'];
-                }}
-                labelFormatter={(label) => `Candidato: ${label}`}
-                contentStyle={{ 
-                  backgroundColor: '#fff', 
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                  padding: '10px'
-                }}
-                labelStyle={{ fontWeight: 'bold' }}
-              />
-              <Bar 
-                dataKey="votes" 
-                radius={[6, 6, 0, 0]}
-                background={{ fill: '#f3f4f6' }}
+      {/* Gráfico de votos - Solo muestra si hay candidatos */}
+      {candidates.length > 0 ? (
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Votos por Candidato (Todos los municipios)</h2>
+          <div className="h-96">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                data={votesChartData} 
+                margin={{ top: 20, right: 30, left: 20, bottom: 30 }}
+                barSize={40}
               >
-                {votesChartData.map((entry, index) => (
-                  <rect key={`bar-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Lista de candidatos */}
-      <div className="bg-white rounded-xl shadow-md p-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Candidatos</h2>
-        <div className="space-y-4">
-          {candidateList.map((candidate) => (
-            <div 
-              key={candidate.id}
-              className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <div className="flex items-center">
-                <div 
-                  className="w-12 h-12 rounded-full flex items-center justify-center mr-4"
-                  style={{ backgroundColor: candidate.color + '20' }}
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis 
+                  dataKey="name" 
+                  stroke="#6b7280"
+                  tick={{ fontSize: 12 }}
+                  height={70}
+                  interval={0}
+                  angle={-25}
+                  textAnchor="end"
+                  padding={{ left: 20, right: 20 }}
+                />
+                <YAxis 
+                  stroke="#6b7280"
+                  tickFormatter={formatNumber}
+                  width={90}
+                />
+                <Tooltip 
+                  formatter={(value: number | [number, number] | undefined) => {
+                    if (Array.isArray(value)) {
+                      return [`${value[0].toLocaleString('es-CO')} - ${value[1].toLocaleString('es-CO')}`, 'Rango'];
+                    }
+                    return [formatNumber(value), 'Votos'];
+                  }}
+                  labelFormatter={(label) => `Candidato: ${label}`}
+                  contentStyle={{ 
+                    backgroundColor: '#fff', 
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                    padding: '10px'
+                  }}
+                  labelStyle={{ fontWeight: 'bold' }}
+                />
+                <Bar 
+                  dataKey="votes" 
+                  radius={[6, 6, 0, 0]}
+                  background={{ fill: '#f3f4f6' }}
                 >
-                  <span className="text-xl font-bold" style={{ color: candidate.color }}>
-                    {candidate.name.charAt(0)}
-                  </span>
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-800">{candidate.name}</h3>
-                  <p className="text-sm text-gray-500">{candidate.party} • {candidate.position}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-2xl font-bold" style={{ color: candidate.color }}>
-                  {formatNumber(candidate.votes)}
-                </p>
-                <p className="text-sm text-gray-500">votos</p>
-              </div>
-            </div>
-          ))}
+                  {votesChartData.map((entry, index) => (
+                    <rect key={`bar-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-md p-6 text-center py-12">
+          <div className="text-5xl mb-4">📊</div>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">Sin datos para mostrar</h2>
+          <p className="text-gray-600">
+            Agrega candidatos desde la sección "Administrar Candidatos" para ver los resultados en el gráfico
+          </p>
+        </div>
+      )}
+
+      {/* Lista de candidatos con votos - Solo muestra si hay candidatos */}
+      {candidates.length > 0 ? (
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Candidatos</h2>
+          <div className="space-y-4">
+            {candidateList.map((candidate) => (
+              <div 
+                key={candidate.id}
+                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <div 
+                    className="w-12 h-12 rounded-full flex items-center justify-center mr-4"
+                    style={{ backgroundColor: (candidate.color || '#3b82f6') + '20' }}
+                  >
+                    <span className="text-xl font-bold" style={{ color: candidate.color || '#3b82f6' }}>
+                      {candidate.name.charAt(0)}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-800">{candidate.name}</h3>
+                    <p className="text-sm text-gray-500">{candidate.party} • {candidate.position}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold" style={{ color: candidate.color || '#3b82f6' }}>
+                    {formatNumber(candidate.votes)}
+                  </p>
+                  <p className="text-sm text-gray-500">votos</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-md p-6 text-center py-12">
+          <div className="text-5xl mb-4">👥</div>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">Sin candidatos registrados</h2>
+          <p className="text-gray-600">
+            Usa el formulario "Administrar Candidatos" para agregar los primeros candidatos
+          </p>
+        </div>
+      )}
     </div>
   );
 }
