@@ -62,34 +62,16 @@ export default function WitnessForm() {
           setVotes(initialVotes);
           setCandidatesLoaded(true);
         } else {
-          // Fallback: candidatos básicos si falla la carga
-          const fallbackCandidates = [
-            { id: 'cand1', name: 'Carlos Gómez', party: 'Partido Verde', color: '#2a9d8f' },
-            { id: 'cand2', name: 'María López', party: 'Cambio Radical', color: '#1a3a6c' },
-            { id: 'cand3', name: 'Juan Ramírez', party: 'Conservador', color: '#e63946' },
-            { id: 'cand4', name: 'Ana Castro', party: 'Alianza Social', color: '#6c5b7b' }
-          ];
-          setCandidates(fallbackCandidates);
-          const initialVotes: { [key: string]: number } = {};
-          fallbackCandidates.forEach(cand => {
-            initialVotes[cand.id] = 0;
-          });
-          setVotes(initialVotes);
+          // Fallback mínimo para evitar errores
+          setCandidates([]);
+          setVotes({});
           setCandidatesLoaded(true);
         }
       } catch (error) {
         console.error('Error cargando candidatos:', error);
-        // Fallback mínimo para evitar errores
-        const fallbackCandidates = [
-          { id: 'cand1', name: 'Candidato 1', party: 'Partido A', color: '#2a9d8f' },
-          { id: 'cand2', name: 'Candidato 2', party: 'Partido B', color: '#1a3a6c' }
-        ];
-        setCandidates(fallbackCandidates);
-        const initialVotes: { [key: string]: number } = {};
-        fallbackCandidates.forEach(cand => {
-          initialVotes[cand.id] = 0;
-        });
-        setVotes(initialVotes);
+        // Fallback mínimo
+        setCandidates([]);
+        setVotes({});
         setCandidatesLoaded(true);
       }
     };
