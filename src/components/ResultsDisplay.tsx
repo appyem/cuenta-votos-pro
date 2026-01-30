@@ -1,68 +1,123 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 export default function ResultsDisplay() {
   const [candidates, setCandidates] = useState<any[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
   const [totalVotes, setTotalVotes] = useState(0);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [loading, setLoading] = useState(true);
+  const isMounted = useRef(true);
 
+  // Cleanup on unmount
   useEffect(() => {
-    // Escuchar candidatos
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  // Escuchar candidatos (una sola vez)
+  useEffect(() => {
     const candidatesQuery = query(collection(db, 'candidates'), orderBy('ballotNumber', 'asc'));
-    const unsubscribeCandidates = onSnapshot(candidatesQuery, (snapshot) => {
-      const candidatesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setCandidates(candidatesData);
+    
+    const unsubscribe = onSnapshot(candidatesQuery, 
+      (snapshot) => {
+        try {
+          const candidatesData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          if (isMounted.current) {
+            setCandidates(candidatesData);
+            setLoading(false);
+          }
+        } catch (err) {
+          console.error('Error fetching candidates in ResultsDisplay:', err);
+          if (isMounted.current) setLoading(false);
+        }
+      },
+      (err) => {
+        console.error('Error in candidates listener:', err);
+        if (isMounted.current) setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // Escuchar reportes (una sola vez - SIN dependencias)
+  useEffect(() => {
+    const reportsQuery = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+    
+    const unsubscribe = onSnapshot(reportsQuery,
+      (snapshot) => {
+        try {
+          const reportsData = snapshot.docs.map(doc => doc.data());
+          
+          if (isMounted.current) {
+            setReports(reportsData);
+            setLastUpdate(new Date());
+          }
+        } catch (err) {
+          console.error('Error fetching reports in ResultsDisplay:', err);
+        }
+      },
+      (err) => {
+        console.error('Error in reports listener:', err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []); // ✅ VACÍO - Se suscribe UNA VEZ al montar
+
+  // Calcular estadísticas (con useCallback para evitar renders innecesarios)
+  const calculateStats = useCallback(() => {
+    if (candidates.length === 0 || reports.length === 0) {
+      if (isMounted.current) {
+        setTotalVotes(0);
+      }
+      return;
+    }
+
+    let total = 0;
+    const candidateVotes: { [key: string]: number } = {};
+    
+    // Inicializar contadores con todos los candidatos
+    candidates.forEach(cand => {
+      candidateVotes[cand.id] = 0;
     });
 
-    // Escuchar reportes para calcular votos
-    const reportsQuery = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
-    const unsubscribeReports = onSnapshot(reportsQuery, (snapshot) => {
-      const reportsData = snapshot.docs.map(doc => doc.data());
-      
-      // Calcular votos por candidato
-      let total = 0;
-      const candidateVotes: { [key: string]: number } = {};
-      
-      // Inicializar contadores
-      candidates.forEach(cand => {
-        candidateVotes[cand.id] = 0;
-      });
+    // Sumar votos de todos los reportes
+    reports.forEach(report => {
+      if (report.votes && typeof report.votes === 'object') {
+        Object.entries(report.votes).forEach(([candId, voteCount]) => {
+          if (typeof voteCount === 'number' && candidateVotes[candId] !== undefined) {
+            candidateVotes[candId] += voteCount;
+            total += voteCount;
+          }
+        });
+      }
+    });
 
-      // Sumar votos de todos los reportes
-      reportsData.forEach(report => {
-        if (report.votes && typeof report.votes === 'object') {
-          Object.entries(report.votes).forEach(([candId, voteCount]) => {
-            if (typeof voteCount === 'number' && candidateVotes[candId] !== undefined) {
-              candidateVotes[candId] += voteCount;
-              total += voteCount;
-            }
-          });
-        }
-      });
-
+    if (isMounted.current) {
       setTotalVotes(total);
-      setLastUpdate(new Date());
       
-      // Actualizar candidatos con votos
+      // Actualizar candidatos con votos (ordenados descendente)
       const updatedCandidates = candidates.map(cand => ({
         ...cand,
         votes: candidateVotes[cand.id] || 0
-      })).sort((a, b) => b.votes - a.votes); // Ordenar por votos descendente
-
+      })).sort((a, b) => b.votes - a.votes);
+      
       setCandidates(updatedCandidates);
-      setLoading(false);
-    });
+    }
+  }, [candidates, reports]); // Dependencias explícitas
 
-    return () => {
-      unsubscribeCandidates();
-      unsubscribeReports();
-    };
-  }, [candidates]);
+  // Ejecutar cálculo cuando cambien candidatos o reportes
+  useEffect(() => {
+    calculateStats();
+  }, [calculateStats]); // calculateStats es estable gracias a useCallback
 
   // Calcular porcentaje de votos
   const calculatePercentage = (votes: number) => {
