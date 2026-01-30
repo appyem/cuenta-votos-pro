@@ -35,7 +35,7 @@ export default function WitnessForm() {
   const [blankVotes, setBlankVotes] = useState(0);
   const [candidatesLoaded, setCandidatesLoaded] = useState(false);
 
-  // Estado para irregularidades
+  // Estado para irregularidades (¡INDEPENDIENTE DE LOS VOTOS!)
   const [hasIrregularity, setHasIrregularity] = useState(false);
   const [irregularityType, setIrregularityType] = useState('');
   const [observation, setObservation] = useState('');
@@ -101,7 +101,7 @@ export default function WitnessForm() {
   // Calcular total de votos
   const totalVotes = Object.values(votes).reduce((sum, count) => sum + count, 0) + blankVotes;
 
-  // Manejar envío del formulario
+  // Manejar envío del formulario (¡CORREGIDO PARA IRREGULARIDADES INDEPENDIENTES!)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -111,27 +111,29 @@ export default function WitnessForm() {
       return;
     }
     
-    // Validación básica
-    if (totalVotes === 0) {
-      setSubmitError('⚠️ Debe ingresar al menos un voto para enviar el reporte.');
+    // Validación CRÍTICA: Permitir envío SI HAY IRREGULARIDAD (aunque votos=0)
+    // O si NO hay irregularidad, requerir al menos 1 voto
+    if (!hasIrregularity && totalVotes === 0) {
+      setSubmitError('⚠️ Debe ingresar al menos un voto O marcar una irregularidad para enviar el reporte.');
       return;
     }
     
-    // Validar campos obligatorios
-    if (!formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber) {
-      setSubmitError('⚠️ Por favor complete todos los campos obligatorios.');
+    // Validar campos obligatorios del testigo
+    if (!formData.name || !formData.id || !formData.phone) {
+      setSubmitError('⚠️ Por favor complete los datos del testigo (nombre, cédula y teléfono).');
       return;
     }
 
-    // Validar irregularidad
-    if (hasIrregularity && !irregularityType) {
-      setSubmitError('⚠️ Seleccione el tipo de irregularidad.');
-      return;
-    }
-
-    if (hasIrregularity && !observation.trim()) {
-      setSubmitError('⚠️ Describa la irregularidad observada.');
-      return;
+    // Validar irregularidad (si está marcada)
+    if (hasIrregularity) {
+      if (!irregularityType) {
+        setSubmitError('⚠️ Seleccione el tipo de irregularidad.');
+        return;
+      }
+      if (!observation.trim()) {
+        setSubmitError('⚠️ Describa la irregularidad observada.');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -142,18 +144,18 @@ export default function WitnessForm() {
       // Preparar datos para Firestore
       const reportData = {
         ...formData,
-        votes: {
+        votes: hasIrregularity && totalVotes === 0 ? {} : { // Solo incluir votos si hay votos o no hay irregularidad
           ...votes,
           blank: blankVotes
         },
-        totalVotes,
+        totalVotes: hasIrregularity && totalVotes === 0 ? 0 : totalVotes, // Forzar 0 si es solo irregularidad
         hasIrregularity,
         irregularityType: hasIrregularity ? irregularityType : '',
         observation: hasIrregularity ? observation.trim() : '',
         municipio: municipioData?.name || municipioParam,
         municipioId: municipioParam,
         timestamp: serverTimestamp(),
-        status: 'pending'
+        status: hasIrregularity ? 'alert' : 'pending' // Alerta prioritaria si hay irregularidad
       };
 
       // Enviar a Firestore
@@ -167,7 +169,7 @@ export default function WitnessForm() {
         // Mantener nombre, cédula y teléfono del testigo
         const { name, id, phone } = formData;
         
-        // Resetear SOLO los datos de la mesa y votos
+        // Resetear SOLO los datos de la mesa, votos e irregularidades
         setFormData({
           name,
           id,
@@ -448,7 +450,7 @@ export default function WitnessForm() {
           )}
         </div>
 
-        {/* Sección 4: Irregularidades (SE RESETEA) */}
+        {/* Sección 4: Irregularidades (¡INDEPENDIENTE DE LOS VOTOS!) */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -472,7 +474,7 @@ export default function WitnessForm() {
               className="mt-1 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
             />
             <label htmlFor="irregularity" className="ml-2 block text-sm font-medium text-gray-700">
-              ¿Reportar irregularidad en esta mesa?
+              ¿Reportar irregularidad en esta mesa? <span className="text-red-500">(Opcional - puede enviarse sin votos)</span>
             </label>
           </div>
           
@@ -525,17 +527,22 @@ export default function WitnessForm() {
               </div>
             </div>
           )}
+          
+          <p className="mt-3 text-xs text-blue-600 bg-blue-50 p-2 rounded-lg border border-blue-200">
+            💡 <strong>Importante:</strong> Puedes enviar un reporte de irregularidad <strong>solo con descripción</strong>, sin necesidad de ingresar votos. 
+            Esto es útil para reportar problemas antes de que inicie la votación o durante el proceso.
+          </p>
         </div>
 
-        {/* Botón de envío */}
+        {/* Botón de envío (¡CORREGIDO!) */}
         <div className="pt-4 border-t border-gray-200">
           <button
             type="submit"
-            disabled={isSubmitting || totalVotes === 0 || candidates.length === 0 || !candidatesLoaded}
+            disabled={isSubmitting || (!hasIrregularity && totalVotes === 0 && candidates.length > 0)}
             className={`w-full font-bold py-3.5 px-6 rounded-xl text-lg shadow-md transition-all transform focus:outline-none focus:ring-2 focus:ring-offset-2 ${
               isSubmitting
                 ? 'bg-blue-400 cursor-wait'
-                : totalVotes === 0 || candidates.length === 0 || !candidatesLoaded
+                : (!hasIrregularity && totalVotes === 0 && candidates.length > 0)
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700 text-white hover:shadow-lg hover:-translate-y-0.5 focus:ring-green-500'
             }`}
@@ -548,21 +555,23 @@ export default function WitnessForm() {
                 </svg>
                 Enviando reporte...
               </span>
-            ) : candidates.length === 0 ? (
-              'Esperando candidatos del Dashboard'
-            ) : totalVotes === 0 ? (
-              'Ingrese votos para enviar'
+            ) : (!hasIrregularity && totalVotes === 0 && candidates.length > 0) ? (
+              'Ingrese votos o marque una irregularidad'
             ) : (
               <>
                 <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
-                {hasIrregularity ? 'Enviar Reporte con Alerta' : 'Enviar Reporte a Firebase'}
+                {hasIrregularity 
+                  ? (totalVotes > 0 
+                    ? 'Enviar Reporte con Votos + Alerta' 
+                    : 'Enviar Solo Alerta de Irregularidad')
+                  : 'Enviar Reporte de Votos'}
               </>
             )}
           </button>
           <p className="text-xs text-gray-500 mt-2 text-center">
-            * Campos obligatorios. Total mínimo: 1 voto. Los datos se envían directamente a Firebase.
+            * Campos obligatorios. Los datos se envían directamente a Firebase.
           </p>
           <p className="text-xs text-blue-600 mt-2 text-center font-medium">
             💡 Tu nombre, cédula y teléfono se mantendrán para tus próximos reportes
@@ -579,6 +588,9 @@ export default function WitnessForm() {
           <p className="text-sm text-blue-800">
             <strong>Importante:</strong> Esta es la URL oficial para testigos de {municipioData.name}. 
             Comparta este enlace solo con testigos acreditados de este municipio.
+            <br /><br />
+            <span className="font-medium text-red-600">⚠️ NUEVO:</span> Ahora puedes reportar irregularidades <strong>en cualquier momento del día</strong>, 
+            incluso antes de que inicie la votación o sin ingresar votos. ¡Tu vigilancia es fundamental!
           </p>
         </div>
       </div>
