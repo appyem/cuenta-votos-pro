@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -45,9 +45,67 @@ export default function Dashboard() {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [showCandidateForm, setShowCandidateForm] = useState(false);
   const [isSubmittingCandidate, setIsSubmittingCandidate] = useState(false);
+  
+  // Estado para carga de imagen
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Calcular estadísticas (USAMOS useCallback para evitar el error de dependencias)
-  const calculateStats = useCallback((reportsData: any[]) => {
+  // Conectar con Firestore para reports
+  useEffect(() => {
+    const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        try {
+          const reportsData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          calculateStats(reportsData);
+          setLoading(false);
+          setError(null);
+        } catch (err) {
+          console.error('Error processing reports:', err);
+          setError('Error al procesar los datos');
+          setLoading(false);
+        }
+      },
+      (err) => {
+        console.error('Error fetching reports from Firestore:', err);
+        setError('Error de conexión con la base de datos');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // Conectar con Firestore para candidates
+  useEffect(() => {
+    const candidatesQuery = query(collection(db, 'candidates'), orderBy('timestamp', 'desc'));
+    
+    const unsubscribe = onSnapshot(candidatesQuery, 
+      (snapshot) => {
+        try {
+          const candidatesData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          setCandidates(candidatesData);
+        } catch (err) {
+          console.error('Error fetching candidates:', err);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // Calcular estadísticas desde los reportes
+  const calculateStats = (reportsData: any[]) => {
     let totalVotes = 0;
     const candidateTotals: { [key: string]: number } = {};
     
@@ -86,60 +144,7 @@ export default function Dashboard() {
       votes: candidateTotals[cand.id] || 0
     }));
     setCandidateList(candidateData);
-  }, [candidates]); // Dependencia explícita de candidates
-
-  // Conectar con Firestore para reports (CORREGIDO: dependencia de calculateStats)
-  useEffect(() => {
-    const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        try {
-          const reportsData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          calculateStats(reportsData); // Ahora calculateStats es estable gracias a useCallback
-          setLoading(false);
-          setError(null);
-        } catch (err) {
-          console.error('Error processing reports:', err);
-          setError('Error al procesar los datos');
-          setLoading(false);
-        }
-      },
-      (err) => {
-        console.error('Error fetching reports from Firestore:', err);
-        setError('Error de conexión con la base de datos');
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [calculateStats]); // calculateStats es estable gracias a useCallback
-
-  // Conectar con Firestore para candidates
-  useEffect(() => {
-    const candidatesQuery = query(collection(db, 'candidates'), orderBy('timestamp', 'desc'));
-    
-    const unsubscribe = onSnapshot(candidatesQuery, 
-      (snapshot) => {
-        try {
-          const candidatesData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          setCandidates(candidatesData);
-        } catch (err) {
-          console.error('Error fetching candidates:', err);
-        }
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
+  };
 
   // Formateador seguro para números
   const formatNumber = (value: number | string | undefined): string => {
@@ -149,11 +154,11 @@ export default function Dashboard() {
     return String(value || 0);
   };
 
-  // Compartir por WhatsApp
+  // Compartir por WhatsApp (CORREGIDO: espacio extra eliminado)
   const shareByWhatsApp = () => {
     const url = `${window.location.origin}/${selectedMunicipio}`;
     const message = `Accede aquí para reportar votos en ${getMunicipioName(selectedMunicipio)}: ${url}`;
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`; // ✅ Espacio eliminado
     window.open(whatsappUrl, '_blank');
   };
 
@@ -169,12 +174,74 @@ export default function Dashboard() {
     setCandidateForm(prev => ({ ...prev, [name]: value }));
   };
 
+  // Manejar carga de imagen desde dispositivo
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+      alert('⚠️ Por favor selecciona un archivo de imagen válido (JPG, PNG, GIF)');
+      return;
+    }
+
+    // Validar tamaño (máx 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('⚠️ La imagen es demasiado grande. Máximo 2MB permitido.');
+      return;
+    }
+
+    setIsUploadingImage(true);
+    
+    try {
+      // Leer archivo como base64
+      const base64String = await readFileAsBase64(file);
+      
+      // Actualizar estado con preview y URL base64
+      setImagePreview(base64String);
+      setCandidateForm(prev => ({ ...prev, imageUrl: base64String }));
+      
+    } catch (error) {
+      console.error('Error al procesar la imagen:', error);
+      alert('❌ Error al cargar la imagen. Intente con otra imagen.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  // Función auxiliar para leer archivo como base64
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        resolve(result);
+      };
+      
+      reader.onerror = (error) => {
+        reject(error);
+      };
+      
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Limpiar imagen seleccionada
+  const clearImage = () => {
+    setImagePreview(null);
+    setCandidateForm(prev => ({ ...prev, imageUrl: '' }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   // Enviar formulario de candidato
   const handleCandidateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!candidateForm.name || !candidateForm.party) {
-      alert('Por favor complete al menos el nombre y el partido del candidato');
+      alert('⚠️ Por favor complete al menos el nombre y el partido del candidato');
       return;
     }
 
@@ -189,7 +256,7 @@ export default function Dashboard() {
 
       await addDoc(collection(db, 'candidates'), candidateData);
       
-      // Reset form
+      // Reset form y preview
       setCandidateForm({
         name: '',
         party: '',
@@ -197,12 +264,16 @@ export default function Dashboard() {
         imageUrl: '',
         position: 'gobernacion'
       });
+      setImagePreview(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       
       setShowCandidateForm(false);
       alert('✅ Candidato agregado exitosamente');
     } catch (error) {
       console.error('Error adding candidate:', error);
-      alert('Error al agregar el candidato. Intente nuevamente.');
+      alert('❌ Error al agregar el candidato. Intente nuevamente.');
     } finally {
       setIsSubmittingCandidate(false);
     }
@@ -219,7 +290,7 @@ export default function Dashboard() {
       alert('✅ Candidato eliminado exitosamente');
     } catch (error) {
       console.error('Error deleting candidate:', error);
-      alert('Error al eliminar el candidato');
+      alert('❌ Error al eliminar el candidato');
     }
   };
 
@@ -328,7 +399,21 @@ export default function Dashboard() {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-gray-800">Administrar Candidatos</h2>
           <button
-            onClick={() => setShowCandidateForm(!showCandidateForm)}
+            onClick={() => {
+              setShowCandidateForm(!showCandidateForm);
+              // Limpiar formulario al cerrar
+              if (showCandidateForm) {
+                setCandidateForm({
+                  name: '',
+                  party: '',
+                  color: '#3b82f6',
+                  imageUrl: '',
+                  position: 'gobernacion'
+                });
+                setImagePreview(null);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }
+            }}
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors flex items-center"
           >
             <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -343,6 +428,7 @@ export default function Dashboard() {
           <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <h3 className="text-lg font-bold text-gray-800 mb-4">Nuevo Candidato</h3>
             <form onSubmit={handleCandidateSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Nombre y Partido */}
               <div className="md:col-span-2">
                 <label htmlFor="candidateName" className="block text-sm font-medium text-gray-700 mb-1">
                   Nombre Completo del Candidato <span className="text-red-500">*</span>
@@ -427,22 +513,55 @@ export default function Dashboard() {
                 <p className="text-xs text-gray-500 mt-1">Selecciona un color para gráficos y tarjetas</p>
               </div>
               
+              {/* Carga de imagen DESDE DISPOSITIVO */}
               <div className="md:col-span-2">
-                <label htmlFor="candidateImage" className="block text-sm font-medium text-gray-700 mb-1">
-                  URL de la Foto del Candidato (opcional)
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Foto del Candidato <span className="text-gray-500">(opcional)</span>
                 </label>
-                <input
-                  type="url"
-                  id="candidateImage"
-                  name="imageUrl"
-                  value={candidateForm.imageUrl}
-                  onChange={handleCandidateChange}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="https://ejemplo.com/foto.jpg"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Sube la foto a <a href="https://imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">ImgBB</a> y pega el enlace aquí
-                </p>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      id="candidateImage"
+                      ref={fileInputRef}
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      disabled={isUploadingImage}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Sube una foto desde tu dispositivo (JPG, PNG, GIF - máximo 2MB)
+                    </p>
+                  </div>
+                  
+                  {imagePreview && (
+                    <div className="flex items-center space-x-3">
+                      <div className="relative">
+                        <img 
+                          src={imagePreview} 
+                          alt="Vista previa" 
+                          className="w-20 h-20 object-cover rounded-full border-2 border-blue-200"
+                        />
+                        {isUploadingImage && (
+                          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-full">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={clearImage}
+                        className="text-red-600 hover:text-red-800 font-medium text-sm flex items-center"
+                        title="Eliminar foto"
+                      >
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Eliminar
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               
               <div className="md:col-span-2 flex space-x-3 pt-2">
@@ -482,6 +601,8 @@ export default function Dashboard() {
                       imageUrl: '',
                       position: 'gobernacion'
                     });
+                    setImagePreview(null);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
                     setShowCandidateForm(false);
                   }}
                   className="px-4 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
@@ -518,7 +639,7 @@ export default function Dashboard() {
                   className="border-2 rounded-xl p-4 hover:shadow-md transition-all duration-200 relative group"
                   style={{ borderColor: candidate.color || '#3b82f6' }}
                 >
-                  {/* BOTÓN DE ELIMINAR SIEMPRE VISIBLE */}
+                  {/* BOTÓN DE ELIMINAR */}
                   <button
                     onClick={() => handleDeleteCandidate(candidate.id)}
                     className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200 hover:text-red-800 transition-colors shadow-sm z-10"
@@ -538,6 +659,10 @@ export default function Dashboard() {
                           alt={candidate.name} 
                           className="w-14 h-14 rounded-full object-cover border-2" 
                           style={{ borderColor: candidate.color || '#3b82f6' }}
+                          onError={(e) => {
+                            // Fallback si la imagen no carga
+                            (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=${candidate.color?.replace('#', '') || '3b82f6'}&color=fff`;
+                          }}
                         />
                       ) : (
                         <div 
