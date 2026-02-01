@@ -409,36 +409,40 @@ export default function WitnessForm() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                {candidates.map((candidate) => (
-                  <div key={candidate.id} className="text-center">
-                    <div className="font-medium text-sm mb-1 truncate" title={candidate.name}>
-                      {candidate.name.split(' ')[0]}
-                    </div>
-                    <div className="text-xs text-gray-500 mb-1">{candidate.party}</div>
-                    <input
-                      type="number"
-                      value={votes[candidate.id] || 0}
-                      onChange={(e) => handleVoteChange(candidate.id, e.target.value)}
-                      min="0"
-                      className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold"
-                      placeholder="0"
-                    />
+             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {candidates.map((candidate) => (
+                <div key={candidate.id} className="text-center">
+                  {/* NÚMERO DE TARJETÓN DESTACADO */}
+                  <div className="bg-blue-600 text-white font-bold text-xs px-2 py-1 rounded mb-1 inline-block shadow">
+                    #{candidate.ballotNumber || '?'}
                   </div>
-                ))}
-                
-                <div className="text-center">
-                  <div className="font-medium text-sm mb-1">Votos en Blanco</div>
+                  <div className="font-medium text-sm mb-1 truncate" title={candidate.name}>
+                    {candidate.name.split(' ')[0]}
+                  </div>
+                  <div className="text-xs text-gray-500 mb-1">{candidate.party}</div>
                   <input
                     type="number"
-                    value={blankVotes}
-                    onChange={(e) => handleVoteChange('blank', e.target.value)}
+                    value={votes[candidate.id] || 0}
+                    onChange={(e) => handleVoteChange(candidate.id, e.target.value)}
                     min="0"
-                    className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold text-gray-500"
+                    className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold"
                     placeholder="0"
                   />
                 </div>
+              ))}
+              
+              <div className="text-center">
+                <div className="font-medium text-sm mb-1">Votos en Blanco</div>
+                <input
+                  type="number"
+                  value={blankVotes}
+                  onChange={(e) => handleVoteChange('blank', e.target.value)}
+                  min="0"
+                  className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold text-gray-500"
+                  placeholder="0"
+                />
               </div>
+            </div>
               
               <div className="mt-4 pt-4 border-t border-gray-100 bg-gray-50 rounded-lg p-3">
                 <div className="flex justify-between items-center">
