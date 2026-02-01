@@ -32,7 +32,6 @@ export default function WitnessForm() {
   // Estado para candidatos (se cargarán desde Firestore)
   const [candidates, setCandidates] = useState<any[]>([]);
   const [votes, setVotes] = useState<{ [key: string]: number }>({});
-  const [blankVotes, setBlankVotes] = useState(0);
   const [candidatesLoaded, setCandidatesLoaded] = useState(false);
 
   // Estado para irregularidades (¡INDEPENDIENTE DE LOS VOTOS!)
@@ -85,21 +84,17 @@ export default function WitnessForm() {
     }));
   };
 
-  // Manejar cambios en los votos
+  // Manejar cambios en los votos (¡SIN VOTOS EN BLANCO!)
   const handleVoteChange = (candidateId: string, value: string) => {
     const numValue = value === '' ? 0 : Math.max(0, parseInt(value, 10) || 0);
-    if (candidateId === 'blank') {
-      setBlankVotes(numValue);
-    } else {
-      setVotes(prev => ({
-        ...prev,
-        [candidateId]: numValue
-      }));
-    }
+    setVotes(prev => ({
+      ...prev,
+      [candidateId]: numValue
+    }));
   };
 
-  // Calcular total de votos
-  const totalVotes = Object.values(votes).reduce((sum, count) => sum + count, 0) + blankVotes;
+  // Calcular total de votos (¡SOLO CANDIDATOS!)
+  const totalVotes = Object.values(votes).reduce((sum, count) => sum + count, 0);
 
   // Manejar envío del formulario (¡CORREGIDO PARA IRREGULARIDADES INDEPENDIENTES!)
   const handleSubmit = async (e: React.FormEvent) => {
@@ -141,13 +136,10 @@ export default function WitnessForm() {
     setSubmitSuccess(false);
 
     try {
-      // Preparar datos para Firestore
+      // Preparar datos para Firestore (¡SIN VOTOS EN BLANCO!)
       const reportData = {
         ...formData,
-        votes: hasIrregularity && totalVotes === 0 ? {} : { // Solo incluir votos si hay votos o no hay irregularidad
-          ...votes,
-          blank: blankVotes
-        },
+        votes: hasIrregularity && totalVotes === 0 ? {} : { ...votes }, // Solo incluir votos si hay votos o no hay irregularidad
         totalVotes: hasIrregularity && totalVotes === 0 ? 0 : totalVotes, // Forzar 0 si es solo irregularidad
         hasIrregularity,
         irregularityType: hasIrregularity ? irregularityType : '',
@@ -184,7 +176,6 @@ export default function WitnessForm() {
           resetVotes[cand.id] = 0;
         });
         setVotes(resetVotes);
-        setBlankVotes(0);
         
         // Resetear irregularidades
         setHasIrregularity(false);
@@ -409,40 +400,28 @@ export default function WitnessForm() {
             </div>
           ) : (
             <>
-             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-              {candidates.map((candidate) => (
-                <div key={candidate.id} className="text-center">
-                  {/* NÚMERO DE TARJETÓN DESTACADO */}
-                  <div className="bg-blue-600 text-white font-bold text-xs px-2 py-1 rounded mb-1 inline-block shadow">
-                    #{candidate.ballotNumber || '?'}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                {candidates.map((candidate) => (
+                  <div key={candidate.id} className="text-center">
+                    {/* NÚMERO DE TARJETÓN DESTACADO */}
+                    <div className="bg-blue-600 text-white font-bold text-xs px-2 py-1 rounded mb-1 inline-block shadow">
+                      #{candidate.ballotNumber || '?'}
+                    </div>
+                    <div className="font-medium text-sm mb-1 truncate" title={candidate.name}>
+                      {candidate.name.split(' ')[0]}
+                    </div>
+                    <div className="text-xs text-gray-500 mb-1">{candidate.party}</div>
+                    <input
+                      type="number"
+                      value={votes[candidate.id] || 0}
+                      onChange={(e) => handleVoteChange(candidate.id, e.target.value)}
+                      min="0"
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold"
+                      placeholder="0"
+                    />
                   </div>
-                  <div className="font-medium text-sm mb-1 truncate" title={candidate.name}>
-                    {candidate.name.split(' ')[0]}
-                  </div>
-                  <div className="text-xs text-gray-500 mb-1">{candidate.party}</div>
-                  <input
-                    type="number"
-                    value={votes[candidate.id] || 0}
-                    onChange={(e) => handleVoteChange(candidate.id, e.target.value)}
-                    min="0"
-                    className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold"
-                    placeholder="0"
-                  />
-                </div>
-              ))}
-              
-              <div className="text-center">
-                <div className="font-medium text-sm mb-1">Votos en Blanco</div>
-                <input
-                  type="number"
-                  value={blankVotes}
-                  onChange={(e) => handleVoteChange('blank', e.target.value)}
-                  min="0"
-                  className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold text-gray-500"
-                  placeholder="0"
-                />
+                ))}
               </div>
-            </div>
               
               <div className="mt-4 pt-4 border-t border-gray-100 bg-gray-50 rounded-lg p-3">
                 <div className="flex justify-between items-center">
