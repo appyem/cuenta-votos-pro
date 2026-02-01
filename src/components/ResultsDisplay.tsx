@@ -9,67 +9,56 @@ export default function ResultsDisplay() {
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [loadingReports, setLoadingReports] = useState(true);
 
-  // ===== CONEXIÓN DIRECTA A FIRESTORE (SIN FALLAS SILENCIOSAS) =====
+  // ===== CONEXIÓN DIRECTA A FIRESTORE =====
   useEffect(() => {
-    console.log('🔍 Iniciando conexión con Firestore para CANDIDATOS...');
-    
-    const unsubscribe = onSnapshot(
+    const unsubscribeCandidates = onSnapshot(
       collection(db, 'candidates'),
       (snapshot) => {
-        console.log(`✅ Candidatos recibidos: ${snapshot.docs.length}`);
         const candidatesData = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
-          votes: 0 // Inicializar contador
+          votes: 0
         }));
         setCandidates(candidatesData);
         setLoadingCandidates(false);
       },
       (error) => {
-        console.error('❌ ERROR FATAL en candidatos:', error);
-        alert(`Error de conexión con candidatos: ${error.message}`);
+        console.error('Error en candidatos:', error);
         setLoadingCandidates(false);
       }
     );
 
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    console.log('🔍 Iniciando conexión con Firestore para REPORTES...');
-    
-    const unsubscribe = onSnapshot(
+    const unsubscribeReports = onSnapshot(
       collection(db, 'reports'),
       (snapshot) => {
-        console.log(`✅ Reportes recibidos: ${snapshot.docs.length}`);
         const reportsData = snapshot.docs.map(doc => doc.data());
         setReports(reportsData);
         setLastUpdate(new Date());
         setLoadingReports(false);
       },
       (error) => {
-        console.error('❌ ERROR FATAL en reportes:', error);
-        alert(`Error de conexión con reportes: ${error.message}`);
+        console.error('Error en reportes:', error);
         setLoadingReports(false);
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeCandidates();
+      unsubscribeReports();
+    };
   }, []);
 
-  // ===== CÁLCULO EN TIEMPO REAL (SIN DEPENDENCIAS ROTAS) =====
+  // ===== CÁLCULO EN TIEMPO REAL =====
   const { totalVotes, candidatesWithVotes } = useMemo(() => {
     if (candidates.length === 0 || reports.length === 0) {
       return { totalVotes: 0, candidatesWithVotes: candidates };
     }
 
-    // Inicializar contadores
     const voteCounters: { [key: string]: number } = {};
     candidates.forEach(cand => {
       voteCounters[cand.id] = 0;
     });
 
-    // Contar votos de TODOS los reportes
     let total = 0;
     reports.forEach(report => {
       if (report.votes && typeof report.votes === 'object') {
@@ -82,7 +71,6 @@ export default function ResultsDisplay() {
       }
     });
 
-    // Crear lista con votos y ordenar
     const candidatesWithVotes = candidates.map(cand => ({
       ...cand,
       votes: voteCounters[cand.id] || 0
@@ -91,202 +79,169 @@ export default function ResultsDisplay() {
     return { totalVotes: total, candidatesWithVotes };
   }, [candidates, reports]);
 
-  // ===== ESTADO DE CARGA =====
   const isLoading = loadingCandidates || loadingReports;
   const hasData = candidates.length > 0 && reports.length > 0;
 
-  // ===== UI DE CARGA CON DIAGNÓSTICO =====
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-4 border-blue-500 mb-8"></div>
-        <p className="text-4xl text-white font-bold mb-4">Conectando con Firebase...</p>
-        <div className="bg-gray-800 border border-blue-500 rounded-lg p-6 max-w-md w-full">
-          <div className="flex justify-between mb-3">
-            <span className="text-blue-300">Candidatos:</span>
-            <span className={loadingCandidates ? "text-yellow-400" : "text-green-400"}>
-              {loadingCandidates ? "⏳ Cargando..." : `✅ ${candidates.length}`}
-            </span>
-          </div>
-          <div className="flex justify-between mb-3">
-            <span className="text-blue-300">Reportes:</span>
-            <span className={loadingReports ? "text-yellow-400" : "text-green-400"}>
-              {loadingReports ? "⏳ Cargando..." : `✅ ${reports.length}`}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-blue-300">Estado:</span>
-            <span className="text-blue-400 font-mono">
-              {loadingCandidates || loadingReports ? "ESPERANDO DATOS" : "LISTO"}
-            </span>
-          </div>
-        </div>
-        <p className="text-xl text-gray-400 mt-6 text-center max-w-2xl">
-          Si la carga demora más de 10 segundos:<br />
-          1. Verifica tu conexión a internet<br />
-          2. Abre la Consola (F12) y revisa los errores<br />
-          3. Confirma que las reglas de Firestore permitan lectura pública
-        </p>
-      </div>
-    );
-  }
-
-  // ===== UI PRINCIPAL =====
+  // ===== DISEÑO SIN SCROLL (PANTALLA COMPLETA) =====
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-blue-900 text-white p-6">
-      {/* Header */}
-      <div className="text-center mb-8 py-4 border-b border-blue-500">
-        <h1 className="text-6xl md:text-8xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-600">
-          RESULTADOS ELECCIONES 2026
-        </h1>
-        <div className="flex flex-col md:flex-row md:items-center md:justify-center gap-4">
-          <div className="bg-blue-600 px-8 py-3 rounded-full text-3xl font-bold shadow-lg">
-            TOTAL VOTOS: {totalVotes.toLocaleString('es-CO')}
-          </div>
-          <div className="text-2xl text-blue-300 bg-black/30 px-6 py-2 rounded-full">
-            Última actualización: {lastUpdate.toLocaleTimeString('es-CO', { 
-              hour: '2-digit', 
-              minute: '2-digit',
-              second: '2-digit',
-              hour12: false 
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Mensaje de diagnóstico (SOLO SI NO HAY DATOS) */}
-      {!hasData && (
-        <div className="bg-red-900 border-l-4 border-red-500 p-6 rounded-lg mb-8 max-w-3xl mx-auto">
-          <div className="flex items-start">
-            <svg className="w-8 h-8 text-red-400 mr-3 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div>
-              <h3 className="text-2xl font-bold text-red-300 mb-2">⚠️ SIN DATOS DISPONIBLES</h3>
-              <p className="text-red-200 mb-3">
-                {candidates.length === 0 && reports.length === 0 && "No se han cargado candidatos ni reportes desde Firebase."}
-                {candidates.length === 0 && reports.length > 0 && "Hay reportes pero NO hay candidatos registrados en Firestore."}
-                {candidates.length > 0 && reports.length === 0 && "Hay candidatos pero NO hay reportes de votos en Firestore."}
-              </p>
-              <div className="mt-4 p-4 bg-black/30 rounded">
-                <p className="font-bold text-yellow-300 mb-2">Pasos para solucionar:</p>
-                <ol className="list-decimal list-inside text-red-100 space-y-1 text-left">
-                  <li>Ve al Dashboard y agrega al menos 1 candidato</li>
-                  <li>Abre el formulario de votos (/manizales) y envía 1 reporte de prueba</li>
-                  <li>Verifica en Firebase Console que existan documentos en:</li>
-                  <ul className="list-disc list-inside ml-4 mt-1">
-                    <li className="text-blue-300">Colección <code className="bg-blue-900 px-1 rounded">candidates</code></li>
-                    <li className="text-blue-300">Colección <code className="bg-blue-900 px-1 rounded">reports</code></li>
-                  </ul>
-                  <li>Confirma que las reglas de Firestore permitan lectura pública</li>
-                </ol>
-              </div>
+    <div className="h-screen w-screen overflow-hidden bg-gradient-to-br from-gray-900 to-blue-900 text-white flex flex-col">
+      {/* Header - Fijo */}
+      <div className="shrink-0 py-3 border-b border-blue-500 bg-black/30">
+        <div className="text-center">
+          <h1 className="text-4xl md:text-6xl font-bold">
+            RESULTADOS ELECCIONES 2026
+          </h1>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-center gap-2 mt-2 px-4">
+            <div className="bg-blue-600 px-6 py-2 rounded-full text-xl md:text-2xl font-bold">
+              TOTAL VOTOS: {totalVotes.toLocaleString('es-CO')}
+            </div>
+            <div className="text-lg md:text-xl bg-black/20 px-4 py-1 rounded-full">
+              Última actualización: {lastUpdate.toLocaleTimeString('es-CO', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false 
+              })}
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Grid de candidatos */}
-      {hasData && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 max-w-7xl mx-auto">
-          {candidatesWithVotes.map((candidate) => {
-            const percentage = totalVotes > 0 ? Math.round((candidate.votes / totalVotes) * 100) : 0;
-            return (
-              <div 
-                key={candidate.id} 
-                className="bg-gray-800 rounded-3xl shadow-2xl overflow-hidden border-4 transform transition-all duration-500 hover:scale-[1.02] border-blue-500/30"
-              >
-                {/* Foto del candidato */}
-                <div className="h-80 bg-gray-700 flex items-center justify-center p-4">
-                  {candidate.imageUrl ? (
-                    <img 
-                      src={candidate.imageUrl} 
-                      alt={candidate.name} 
-                      className="max-h-72 max-w-full rounded-xl object-contain"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=${candidate.color?.replace('#', '') || '3b82f6'}&color=fff&size=256`;
-                      }}
-                    />
-                  ) : (
-                    <div 
-                      className="w-full h-full flex items-center justify-center text-white text-8xl font-bold rounded-xl"
-                      style={{ backgroundColor: (candidate.color || '#3b82f6') + 'cc' }}
-                    >
-                      {candidate.name.charAt(0)}
-                    </div>
-                  )}
-                </div>
-                
-                {/* Información del candidato */}
-                <div className="p-6">
-                  <div className="text-center mb-4">
-                    <span className="inline-block bg-blue-600 text-white text-4xl font-bold px-6 py-2 rounded-full shadow-lg">
-                      #{candidate.ballotNumber || '?'}
-                    </span>
-                  </div>
-                  
-                  <h2 className="text-4xl font-bold text-center mb-2">{candidate.name}</h2>
-                  <p className="text-2xl text-blue-300 text-center mb-4">{candidate.party}</p>
-                  <div className="text-center mb-6">
-                    <span className="inline-block bg-purple-900 text-purple-300 px-4 py-1 rounded-full text-xl">
-                      {candidate.position}
-                    </span>
-                  </div>
-                  
-                  <div className="text-center mb-6">
-                    <div className="text-8xl md:text-9xl font-bold mb-2" style={{ color: candidate.color || '#3b82f6' }}>
-                      {candidate.votes.toLocaleString('es-CO')}
-                    </div>
-                    <p className="text-3xl text-gray-300">VOTOS</p>
-                  </div>
-                  
-                  {totalVotes > 0 && (
-                    <div className="mt-4">
-                      <div className="flex justify-between text-xl mb-2">
-                        <span>Participación:</span>
-                        <span className="font-bold text-blue-400">{percentage}%</span>
-                      </div>
-                      <div className="w-full bg-gray-700 rounded-full h-8 overflow-hidden">
-                        <div 
-                          className="h-full rounded-full transition-all duration-1000 ease-out"
-                          style={{ 
-                            width: `${percentage}%`,
-                            backgroundColor: candidate.color || '#3b82f6',
-                            boxShadow: `0 0 15px ${candidate.color || '#3b82f6'}`
-                          }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+      {/* Contenido Principal - OCUPA TODO EL ESPACIO DISPONIBLE */}
+      <div className="flex-grow flex items-center justify-center p-2 md:p-4">
+        {isLoading ? (
+          // Pantalla de carga SIN scroll
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-24 w-24 border-b-4 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-2xl md:text-3xl font-bold">Conectando con Firebase...</p>
+            <div className="mt-4 grid grid-cols-2 gap-4 max-w-md mx-auto">
+              <div className="text-left">
+                <span className="text-blue-300">Candidatos:</span>
+                <span className={loadingCandidates ? "text-yellow-400 ml-2" : "text-green-400 ml-2"}>
+                  {loadingCandidates ? "⏳" : `✅ ${candidates.length}`}
+                </span>
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Mensaje inicial si no hay datos */}
-      {!hasData && (
-        <div className="text-center py-24 max-w-4xl mx-auto">
-          <div className="text-9xl mb-8 animate-bounce">🗳️</div>
-          <h2 className="text-7xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-yellow-500">
-            SIN RESULTADOS AÚN
-          </h2>
-          <p className="text-4xl text-gray-300 mb-8">
-            Esperando datos de Firebase...
-          </p>
-          <div className="text-3xl text-blue-400 animate-pulse font-mono">
-            {loadingCandidates ? "⏳ Cargando candidatos..." : 
-             loadingReports ? "⏳ Cargando reportes..." : 
-             "✅ Conectado - Esperando primer reporte"}
+              <div className="text-left">
+                <span className="text-blue-300">Reportes:</span>
+                <span className={loadingReports ? "text-yellow-400 ml-2" : "text-green-400 ml-2"}>
+                  {loadingReports ? "⏳" : `✅ ${reports.length}`}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        ) : !hasData ? (
+          // Mensaje sin datos SIN scroll
+          <div className="text-center max-w-3xl mx-auto p-6">
+            <div className="text-8xl mb-6 animate-bounce">🗳️</div>
+            <h2 className="text-5xl md:text-6xl font-bold mb-4">SIN RESULTADOS AÚN</h2>
+            <p className="text-2xl md:text-3xl text-gray-300 mb-6">
+              Esperando datos de Firebase...
+            </p>
+            <div className="text-xl md:text-2xl text-blue-400 animate-pulse">
+              {loadingCandidates ? "⏳ Cargando candidatos..." : 
+               loadingReports ? "⏳ Cargando reportes..." : 
+               "✅ Conectado - Esperando primer reporte"}
+            </div>
+          </div>
+        ) : (
+          // GRID DE CANDIDATOS - AJUSTADO A PANTALLA COMPLETA SIN SCROLL
+          <div 
+            className="w-full h-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3 p-1"
+            style={{ 
+              gridTemplateRows: 'repeat(auto-fill, minmax(0, 1fr))',
+              maxHeight: '100%'
+            }}
+          >
+            {candidatesWithVotes.map((candidate) => {
+              const percentage = totalVotes > 0 ? Math.round((candidate.votes / totalVotes) * 100) : 0;
+              return (
+                <div 
+                  key={candidate.id} 
+                  className="bg-gray-800 rounded-2xl shadow-xl border-2 flex flex-col"
+                  style={{ 
+                    borderColor: candidate.color || '#3b82f6',
+                    boxShadow: `0 10px 15px -3px ${candidate.color}33`
+                  }}
+                >
+                  {/* Foto del candidato - PROPORCIONAL */}
+                  <div className="h-36 md:h-44 bg-gray-700 flex items-center justify-center p-2">
+                    {candidate.imageUrl ? (
+                      <img 
+                        src={candidate.imageUrl} 
+                        alt={candidate.name} 
+                        className="max-h-full max-w-full rounded-lg object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=${candidate.color?.replace('#', '') || '3b82f6'}&color=fff&size=256`;
+                        }}
+                      />
+                    ) : (
+                      <div 
+                        className="w-full h-full flex items-center justify-center text-white text-5xl md:text-6xl font-bold rounded-lg"
+                        style={{ backgroundColor: (candidate.color || '#3b82f6') + 'cc' }}
+                      >
+                        {candidate.name.charAt(0)}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Información compacta */}
+                  <div className="p-2 md:p-3 flex flex-col flex-grow">
+                    <div className="text-center mb-1">
+                      <span className="inline-block bg-blue-600 text-white text-lg md:text-xl font-bold px-3 py-1 rounded-full">
+                        #{candidate.ballotNumber || '?'}
+                      </span>
+                    </div>
+                    
+                    <h2 className="text-xl md:text-2xl font-bold text-center truncate">{candidate.name}</h2>
+                    <p className="text-xs md:text-sm text-blue-300 text-center mb-1 truncate">{candidate.party}</p>
+                    
+                    <div className="text-center my-1">
+                      <span className="inline-block bg-purple-900/70 text-purple-300 px-2 py-0.5 rounded text-xs">
+                        {candidate.position}
+                      </span>
+                    </div>
+                    
+                    {/* Contador de votos - AJUSTADO */}
+                    <div className="text-center my-1 flex-grow flex flex-col justify-center">
+                      <div 
+                        className="text-4xl md:text-5xl lg:text-6xl font-bold"
+                        style={{ color: candidate.color || '#3b82f6' }}
+                      >
+                        {candidate.votes.toLocaleString('es-CO')}
+                      </div>
+                      <p className="text-xs md:text-sm text-gray-300 mt-0.5">VOTOS</p>
+                    </div>
+                    
+                    {/* Barra de progreso compacta */}
+                    {totalVotes > 0 && (
+                      <div className="mt-1">
+                        <div className="flex justify-between text-[0.65rem] md:text-xs mb-0.5">
+                          <span>Participación:</span>
+                          <span className="font-bold">{percentage}%</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2">
+                          <div 
+                            className="h-full rounded-full transition-all duration-1000"
+                            style={{ 
+                              width: `${percentage}%`,
+                              backgroundColor: candidate.color || '#3b82f6'
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-      {/* Footer */}
-      <div className="text-center mt-12 pt-6 border-t border-blue-800 text-xl text-blue-300">
+      {/* Footer - Fijo */}
+      <div className="shrink-0 py-2 border-t border-blue-800 text-center text-xs md:text-sm">
         <p>Sistema de Monitoreo Electoral en Tiempo Real • Caldas 2026</p>
-        <p className="mt-2 text-lg">Datos actualizados automáticamente desde Firebase • Última verificación: {new Date().toLocaleTimeString('es-CO')}</p>
+        <p className="mt-1">Datos actualizados automáticamente desde Firebase</p>
       </div>
     </div>
   );
