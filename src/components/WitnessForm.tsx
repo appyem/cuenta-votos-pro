@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { addDoc, collection, serverTimestamp, query, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { MUNICIPALITIES, Municipality } from '../config/municipalities';
@@ -34,10 +34,21 @@ export default function WitnessForm() {
   const [votes, setVotes] = useState<{ [key: string]: number }>({});
   const [candidatesLoaded, setCandidatesLoaded] = useState(false);
 
-  // Estado para irregularidades (¡INDEPENDIENTE DE LOS VOTOS!)
+  // Estado para irregularidades
   const [hasIrregularity, setHasIrregularity] = useState(false);
   const [irregularityType, setIrregularityType] = useState('');
   const [observation, setObservation] = useState('');
+  
+  // Estado para imágenes de irregularidades (OPCIONAL - máximo 3)
+  const [irregularityImages, setIrregularityImages] = useState<string[]>([]);
+  const [irregularityPreviews, setIrregularityPreviews] = useState<string[]>([]);
+  const [isUploadingIrregularity, setIsUploadingIrregularity] = useState(false);
+
+  // Estado para foto del E-14 (OBLIGATORIO)
+  const [e14Image, setE14Image] = useState<string | null>(null);
+  const [e14Preview, setE14Preview] = useState<string | null>(null);
+  const [isUploadingE14, setIsUploadingE14] = useState(false);
+  const e14FileInputRef = useRef<HTMLInputElement>(null);
 
   // Estado para el envío
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,7 +77,6 @@ export default function WitnessForm() {
         setCandidatesLoaded(true);
       } catch (error) {
         console.error('Error cargando candidatos:', error);
-        // Fallback: candidatos vacíos pero marca como cargado
         setCandidates([]);
         setVotes({});
         setCandidatesLoaded(true);
@@ -84,7 +94,7 @@ export default function WitnessForm() {
     }));
   };
 
-  // Manejar cambios en los votos (¡SIN VOTOS EN BLANCO!)
+  // Manejar cambios en los votos
   const handleVoteChange = (candidateId: string, value: string) => {
     const numValue = value === '' ? 0 : Math.max(0, parseInt(value, 10) || 0);
     setVotes(prev => ({
@@ -93,10 +103,112 @@ export default function WitnessForm() {
     }));
   };
 
-  // Calcular total de votos (¡SOLO CANDIDATOS!)
+  // Calcular total de votos
   const totalVotes = Object.values(votes).reduce((sum, count) => sum + count, 0);
 
-  // Manejar envío del formulario (¡CORREGIDO PARA IRREGULARIDADES INDEPENDIENTES!)
+  // Manejar carga de foto del E-14 (OBLIGATORIO)
+  const handleE14Upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+      alert('⚠️ Por favor selecciona una imagen válida (JPG, PNG, GIF)');
+      return;
+    }
+
+    // Validar tamaño (máx 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('⚠️ La imagen es demasiado grande. Máximo 2MB permitido.');
+      return;
+    }
+
+    setIsUploadingE14(true);
+    
+    try {
+      const base64String = await readFileAsBase64(file);
+      setE14Image(base64String);
+      setE14Preview(URL.createObjectURL(file));
+    } catch (error) {
+      console.error('Error al procesar la imagen del E-14:', error);
+      alert('❌ Error al cargar la foto del E-14. Intente con otra imagen.');
+    } finally {
+      setIsUploadingE14(false);
+    }
+  };
+
+  // Manejar carga de imágenes de irregularidades (OPCIONAL - máximo 3)
+  const handleIrregularityImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+      alert('⚠️ Por favor selecciona una imagen válida (JPG, PNG, GIF)');
+      return;
+    }
+
+    // Validar tamaño (máx 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('⚠️ La imagen es demasiado grande. Máximo 2MB permitido.');
+      return;
+    }
+
+    // Validar máximo 3 imágenes
+    if (irregularityImages.length >= 3) {
+      alert('⚠️ Máximo 3 fotos de evidencia permitidas.');
+      return;
+    }
+
+    setIsUploadingIrregularity(true);
+    
+    try {
+      const base64String = await readFileAsBase64(file);
+      setIrregularityImages(prev => [...prev, base64String]);
+      setIrregularityPreviews(prev => [...prev, URL.createObjectURL(file)]);
+    } catch (error) {
+      console.error('Error al procesar la imagen de irregularidad:', error);
+      alert('❌ Error al cargar la foto. Intente con otra imagen.');
+    } finally {
+      setIsUploadingIrregularity(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  // Eliminar imagen de irregularidad
+  const removeIrregularityImage = (index: number) => {
+    setIrregularityImages(prev => prev.filter((_, i) => i !== index));
+    setIrregularityPreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Limpiar foto del E-14
+  const clearE14Image = () => {
+    setE14Image(null);
+    setE14Preview(null);
+    if (e14FileInputRef.current) {
+      e14FileInputRef.current.value = '';
+    }
+  };
+
+  // Función auxiliar para leer archivo como base64
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        resolve(result);
+      };
+      
+      reader.onerror = (error) => {
+        reject(error);
+      };
+      
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Manejar envío del formulario
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -106,10 +218,16 @@ export default function WitnessForm() {
       return;
     }
     
-    // Validación CRÍTICA: Permitir envío SI HAY IRREGULARIDAD (aunque votos=0)
-    // O si NO hay irregularidad, requerir al menos 1 voto
+    // Validación: debe haber al menos un voto O irregularidad
     if (!hasIrregularity && totalVotes === 0) {
       setSubmitError('⚠️ Debe ingresar al menos un voto O marcar una irregularidad para enviar el reporte.');
+      return;
+    }
+    
+    // Validación: foto del E-14 es OBLIGATORIA
+    if (!e14Image) {
+      setSubmitError('❌ ¡Foto del formulario E-14 es obligatoria! Tome una foto del acta física para enviar el reporte.');
+      e14FileInputRef.current?.scrollIntoView({ behavior: 'smooth' });
       return;
     }
     
@@ -136,18 +254,20 @@ export default function WitnessForm() {
     setSubmitSuccess(false);
 
     try {
-      // Preparar datos para Firestore (¡SIN VOTOS EN BLANCO!)
+      // Preparar datos para Firestore
       const reportData = {
         ...formData,
-        votes: hasIrregularity && totalVotes === 0 ? {} : { ...votes }, // Solo incluir votos si hay votos o no hay irregularidad
-        totalVotes: hasIrregularity && totalVotes === 0 ? 0 : totalVotes, // Forzar 0 si es solo irregularidad
+        votes: hasIrregularity && totalVotes === 0 ? {} : { ...votes },
+        totalVotes: hasIrregularity && totalVotes === 0 ? 0 : totalVotes,
         hasIrregularity,
         irregularityType: hasIrregularity ? irregularityType : '',
         observation: hasIrregularity ? observation.trim() : '',
+        irregularityImages: irregularityImages, // Array de base64 (opcional)
+        e14Image: e14Image, // Base64 string (obligatorio)
         municipio: municipioData?.name || municipioParam,
         municipioId: municipioParam,
         timestamp: serverTimestamp(),
-        status: hasIrregularity ? 'alert' : 'pending' // Alerta prioritaria si hay irregularidad
+        status: hasIrregularity ? 'alert' : 'pending'
       };
 
       // Enviar a Firestore
@@ -161,7 +281,7 @@ export default function WitnessForm() {
         // Mantener nombre, cédula y teléfono del testigo
         const { name, id, phone } = formData;
         
-        // Resetear SOLO los datos de la mesa, votos e irregularidades
+        // Resetear SOLO los datos de la mesa, votos, imágenes e irregularidades
         setFormData({
           name,
           id,
@@ -177,12 +297,23 @@ export default function WitnessForm() {
         });
         setVotes(resetVotes);
         
+        // Resetear imágenes
+        setE14Image(null);
+        setE14Preview(null);
+        setIrregularityImages([]);
+        setIrregularityPreviews([]);
+        
         // Resetear irregularidades
         setHasIrregularity(false);
         setIrregularityType('');
         setObservation('');
         
         setSubmitSuccess(false);
+        
+        // Limpiar input de E-14
+        if (e14FileInputRef.current) {
+          e14FileInputRef.current.value = '';
+        }
       }, 2000);
       
     } catch (error) {
@@ -248,7 +379,7 @@ export default function WitnessForm() {
           </div>
         )}
 
-        {/* Sección 1: Información del Testigo (DATOS QUE PERSISTEN) */}
+        {/* Sección 1: Información del Testigo */}
         <div>
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -311,7 +442,7 @@ export default function WitnessForm() {
           </div>
         </div>
 
-        {/* Sección 2: Ubicación de la Mesa (SE RESETEA) */}
+        {/* Sección 2: Ubicación de la Mesa */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -367,7 +498,7 @@ export default function WitnessForm() {
           </div>
         </div>
 
-        {/* Sección 3: Resultados de la Mesa (SE RESETEA) */}
+        {/* Sección 3: Resultados de la Mesa */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -376,7 +507,6 @@ export default function WitnessForm() {
             Resultados de la Mesa
           </h2>
           
-          {/* Mensaje si no hay candidatos */}
           {!candidatesLoaded ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -403,7 +533,6 @@ export default function WitnessForm() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                 {candidates.map((candidate) => (
                   <div key={candidate.id} className="text-center">
-                    {/* NÚMERO DE TARJETÓN DESTACADO */}
                     <div className="bg-blue-600 text-white font-bold text-xs px-2 py-1 rounded mb-1 inline-block shadow">
                       #{candidate.ballotNumber || '?'}
                     </div>
@@ -433,7 +562,72 @@ export default function WitnessForm() {
           )}
         </div>
 
-        {/* Sección 4: Irregularidades (¡INDEPENDIENTE DE LOS VOTOS!) */}
+        {/* Sección 4: Foto del Formulario E-14 (OBLIGATORIO) */}
+        <div className="pt-4 border-t border-gray-200">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <svg className="w-5 h-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Foto del Formulario E-14 <span className="text-red-500 ml-1">*</span>
+          </h2>
+          
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-sm text-red-800 font-medium mb-2">
+              ⚠️ <strong>¡OBLIGATORIO!</strong> Tome una foto clara del formulario físico E-14 (acta de escrutinio) al finalizar el conteo.
+            </p>
+            <p className="text-xs text-red-700 mb-3">
+              Esta foto es requerida para validar el reporte y garantizar la transparencia del proceso electoral.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex-1">
+                <input
+                  type="file"
+                  id="e14Image"
+                  ref={e14FileInputRef}
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleE14Upload}
+                  disabled={isUploadingE14}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  📸 Use la cámara de su celular o seleccione desde la galería (JPG, PNG, GIF - máximo 2MB)
+                </p>
+              </div>
+              
+              {e14Preview && (
+                <div className="flex items-center space-x-3">
+                  <div className="relative">
+                    <img 
+                      src={e14Preview} 
+                      alt="Vista previa E-14" 
+                      className="w-24 h-24 object-cover rounded-lg border-2 border-blue-200"
+                    />
+                    {isUploadingE14 && (
+                      <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearE14Image}
+                    className="text-red-600 hover:text-red-800 font-medium text-sm flex items-center"
+                    title="Eliminar foto"
+                  >
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Eliminar
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Sección 5: Irregularidades (con fotos opcionales) */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -452,12 +646,14 @@ export default function WitnessForm() {
                 if (!e.target.checked) {
                   setIrregularityType('');
                   setObservation('');
+                  setIrregularityImages([]);
+                  setIrregularityPreviews([]);
                 }
               }}
               className="mt-1 h-4 w-4 text-blue-600 rounded focus:ring-blue-500"
             />
             <label htmlFor="irregularity" className="ml-2 block text-sm font-medium text-gray-700">
-              ¿Reportar irregularidad en esta mesa? <span className="text-red-500">(Opcional - puede enviarse sin votos)</span>
+              ¿Reportar irregularidad en esta mesa? <span className="text-red-500">(Opcional)</span>
             </label>
           </div>
           
@@ -508,24 +704,68 @@ export default function WitnessForm() {
                   Sea específico: ¿qué ocurrió?, ¿quiénes estaban involucrados?, ¿a qué hora sucedió?
                 </p>
               </div>
+              
+              {/* Fotos de evidencia (OPCIONAL) */}
+              <div className="pt-3 border-t border-red-100">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fotos de Evidencia <span className="text-gray-500">(Opcional - máximo 3)</span>
+                </label>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      id="irregularityImage"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleIrregularityImageUpload}
+                      disabled={isUploadingIrregularity || irregularityImages.length >= 3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      📸 Adjunte fotos como evidencia (JPG, PNG, GIF - máximo 2MB por foto)
+                    </p>
+                  </div>
+                  
+                  {irregularityPreviews.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                      {irregularityPreviews.map((preview, index) => (
+                        <div key={index} className="relative">
+                          <img 
+                            src={preview} 
+                            alt={`Evidencia ${index + 1}`} 
+                            className="w-20 h-20 object-cover rounded border-2 border-blue-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeIrregularityImage(index)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-600 text-xs"
+                            title="Eliminar foto"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
           
           <p className="mt-3 text-xs text-blue-600 bg-blue-50 p-2 rounded-lg border border-blue-200">
-            💡 <strong>Importante:</strong> Puedes enviar un reporte de irregularidad <strong>solo con descripción</strong>, sin necesidad de ingresar votos. 
-            Esto es útil para reportar problemas antes de que inicie la votación o durante el proceso.
+            💡 <strong>Importante:</strong> Las fotos de irregularidades son <strong>opcionales</strong>, pero la foto del formulario E-14 es <strong>obligatoria</strong> para enviar cualquier reporte.
           </p>
         </div>
 
-        {/* Botón de envío (¡CORREGIDO!) */}
+        {/* Botón de envío */}
         <div className="pt-4 border-t border-gray-200">
           <button
             type="submit"
-            disabled={isSubmitting || (!hasIrregularity && totalVotes === 0 && candidates.length > 0)}
+            disabled={isSubmitting || (!hasIrregularity && totalVotes === 0 && candidates.length > 0) || !e14Image}
             className={`w-full font-bold py-3.5 px-6 rounded-xl text-lg shadow-md transition-all transform focus:outline-none focus:ring-2 focus:ring-offset-2 ${
               isSubmitting
                 ? 'bg-blue-400 cursor-wait'
-                : (!hasIrregularity && totalVotes === 0 && candidates.length > 0)
+                : (!hasIrregularity && totalVotes === 0 && candidates.length > 0) || !e14Image
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-green-600 hover:bg-green-700 text-white hover:shadow-lg hover:-translate-y-0.5 focus:ring-green-500'
             }`}
@@ -538,8 +778,8 @@ export default function WitnessForm() {
                 </svg>
                 Enviando reporte...
               </span>
-            ) : (!hasIrregularity && totalVotes === 0 && candidates.length > 0) ? (
-              'Ingrese votos o marque una irregularidad'
+            ) : (!hasIrregularity && totalVotes === 0 && candidates.length > 0) || !e14Image ? (
+              !e14Image ? '📸 ¡Foto del E-14 es obligatoria!' : 'Ingrese votos o marque una irregularidad'
             ) : (
               <>
                 <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -572,8 +812,8 @@ export default function WitnessForm() {
             <strong>Importante:</strong> Esta es la URL oficial para testigos de {municipioData.name}. 
             Comparta este enlace solo con testigos acreditados de este municipio.
             <br /><br />
-            <span className="font-medium text-red-600">⚠️ NUEVO:</span> Ahora puedes reportar irregularidades <strong>en cualquier momento del día</strong>, 
-            incluso antes de que inicie la votación o sin ingresar votos. ¡Tu vigilancia es fundamental!
+            <span className="font-medium text-red-600">📸 NUEVO:</span> Ahora debes <strong>tomar una foto del formulario E-14 físico</strong> al finalizar el conteo. 
+            Esta foto es <strong>obligatoria</strong> para validar tu reporte. También puedes adjuntar fotos de irregularidades como evidencia (opcional).
           </p>
         </div>
       </div>
