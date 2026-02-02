@@ -35,7 +35,7 @@ export default function Footer() {
         
         <div className="mt-3 pt-3 border-t border-blue-800 text-xs text-gray-500">
           <p>Sistema desarrollado por Appyempresa S.A.S para el monitoreo electoral transparente de Caldas 2026</p>
-          <p className="mt-1 text-blue-300 font-medium">Soporte Técnico: soporte@appyempresa.digital • +57 300 123 4567</p>
+          <p className="mt-1 text-blue-300 font-medium">Soporte Técnico: gerenteappyempresa@gmail.com • +57 310 652 44 53</p>
         </div>
       </div>
     </footer>
