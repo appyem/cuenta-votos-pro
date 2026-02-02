@@ -81,17 +81,57 @@ export default function ResultsDisplay() {
 
   const isLoading = loadingCandidates || loadingReports;
   const hasData = candidates.length > 0 && reports.length > 0;
+  const candidateCount = candidatesWithVotes.length;
 
-  // ===== CALCULAR COLUMNAS DINÁMICAS =====
-  const getGridClass = () => {
-    const count = candidatesWithVotes.length;
-    if (count <= 4) return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4';
-    if (count <= 8) return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
-    if (count <= 12) return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5';
-    return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6';
+  // ===== CALCULAR CLASES DE GRID DINÁMICAS SEGÚN CANTIDAD DE CANDIDATOS =====
+  const getGridStyles = () => {
+    // Ajustar columnas según cantidad de candidatos PARA MEJOR DISTRIBUCIÓN
+    if (candidateCount <= 2) {
+      // 1-2 candidatos: máximo 2 columnas, cards muy grandes
+      return {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+        gridAutoRows: '1fr',
+        gap: '1.5rem'
+      };
+    } else if (candidateCount <= 4) {
+      // 3-4 candidatos: máximo 3 columnas, cards grandes
+      return {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+        gridAutoRows: '1fr',
+        gap: '1.25rem'
+      };
+    } else if (candidateCount <= 6) {
+      // 5-6 candidatos: máximo 4 columnas, cards medianos
+      return {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+        gridAutoRows: '1fr',
+        gap: '1rem'
+      };
+    } else if (candidateCount <= 9) {
+      // 7-9 candidatos: máximo 5 columnas
+      return {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gridAutoRows: '1fr',
+        gap: '0.875rem'
+      };
+    } else if (candidateCount <= 12) {
+      // 10-12 candidatos: máximo 6 columnas
+      return {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gridAutoRows: '1fr',
+        gap: '0.75rem'
+      };
+    } else {
+      // 13+ candidatos: máximo 7 columnas, cards compactos pero legibles
+      return {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gridAutoRows: '1fr',
+        gap: '0.625rem'
+      };
+    }
   };
 
-  // ===== DISEÑO SIN SCROLL - CORREGIDO (CONTENEDOR DE RESULTADOS FIJO E INDEPENDIENTE) =====
+  // ===== DISEÑO ADAPTATIVO (SIN SCROLL, SIN ESPACIOS VACÍOS) =====
   return (
     <div className="h-screen w-screen overflow-hidden bg-gradient-to-br from-gray-900 to-blue-900 text-white flex flex-col">
       {/* Header - Fijo */}
@@ -117,7 +157,7 @@ export default function ResultsDisplay() {
       </div>
 
       {/* Contenido Principal - OCUPA TODO EL ESPACIO DISPONIBLE */}
-      <div className="flex-grow flex flex-col p-1 md:p-2 overflow-hidden">
+      <div className="flex-grow flex flex-col p-2 md:p-4 overflow-hidden">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-full">
             <div className="animate-spin rounded-full h-24 w-24 border-b-4 border-blue-500 mx-auto mb-4"></div>
@@ -151,24 +191,24 @@ export default function ResultsDisplay() {
             </div>
           </div>
         ) : (
-          // GRID DE CANDIDATOS - ¡CORREGIDO! CONTENEDOR DE RESULTADOS FIJO E INDEPENDIENTE
+          // GRID ADAPTATIVO - ¡CLAVE! Se ajusta según cantidad de candidatos
           <div 
-            className={`grid ${getGridClass()} gap-1 md:gap-2 h-full w-full`}
-            style={{ gridAutoRows: '1fr' }}
+            className="grid w-full h-full"
+            style={getGridStyles()}
           >
             {candidatesWithVotes.map((candidate) => {
               const percentage = totalVotes > 0 ? Math.round((candidate.votes / totalVotes) * 100) : 0;
               return (
                 <div 
                   key={candidate.id} 
-                  className="bg-gray-800 rounded-xl shadow-lg border-2 flex flex-col overflow-hidden h-full"
+                  className="bg-gray-800 rounded-xl shadow-lg border-2 flex flex-col overflow-hidden"
                   style={{ 
                     borderColor: candidate.color || '#3b82f6',
                     boxShadow: `0 4px 6px ${candidate.color}33`
                   }}
                 >
-                  {/* ===== SECCIÓN SUPERIOR: DATOS BÁSICOS (NÚMERO, NOMBRE, PARTIDO) ===== */}
-                  <div className="p-1.5 bg-gray-900 border-b border-gray-700 flex-shrink-0" style={{ minHeight: '45px' }}>
+                  {/* ===== SECCIÓN SUPERIOR: DATOS BÁSICOS ===== */}
+                  <div className="p-2 bg-gray-900 border-b border-gray-700 flex-shrink-0" style={{ minHeight: '45px' }}>
                     <div className="text-center mb-1">
                       <span className="inline-block bg-blue-600 text-white text-xs md:text-sm font-bold px-2 py-0.5 rounded">
                         #{candidate.ballotNumber || '?'}
@@ -182,8 +222,8 @@ export default function ResultsDisplay() {
                     </p>
                   </div>
                   
-                  {/* ===== SECCIÓN CENTRAL: FOTO (CON ALTURA MÁXIMA FIJA) ===== */}
-                  <div className="bg-gray-700 p-2 flex-shrink-0 overflow-hidden" style={{ maxHeight: '120px' }}>
+                  {/* ===== SECCIÓN CENTRAL: FOTO (ADAPTABLE AL ESPACIO DISPONIBLE) ===== */}
+                  <div className="bg-gray-700 p-2 flex-grow min-h-0 overflow-hidden">
                     {candidate.imageUrl ? (
                       <img 
                         src={candidate.imageUrl} 
@@ -203,16 +243,16 @@ export default function ResultsDisplay() {
                     )}
                   </div>
                   
-                  {/* ===== SECCIÓN INFERIOR: RESULTADOS FIJOS (INDEPENDIENTE DE LA FOTO) ===== */}
-                  <div className="p-1.5 bg-gray-850 border-t border-gray-700 flex-shrink-0" style={{ minHeight: '70px' }}>
-                    <div className="text-center py-1">
+                  {/* ===== SECCIÓN INFERIOR: RESULTADOS (SIEMPRE VISIBLES) ===== */}
+                  <div className="p-1.5 bg-gray-850 border-t border-gray-700 flex-shrink-0" style={{ minHeight: '65px' }}>
+                    <div className="text-center py-0.5">
                       <div 
-                        className="text-xl md:text-2xl lg:text-3xl font-bold"
+                        className="text-lg md:text-xl lg:text-2xl font-bold"
                         style={{ color: candidate.color || '#3b82f6' }}
                       >
                         {candidate.votes.toLocaleString('es-CO')}
                       </div>
-                      <p className="text-[0.65rem] md:text-xs text-gray-300 mt-1">VOTOS</p>
+                      <p className="text-[0.6rem] md:text-xs text-gray-300 mt-0.5">VOTOS</p>
                     </div>
                     
                     {totalVotes > 0 && (
