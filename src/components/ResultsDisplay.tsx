@@ -91,7 +91,7 @@ export default function ResultsDisplay() {
     return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6';
   };
 
-  // ===== DISEÑO SIN SCROLL - CORREGIDO (FOTO GRANDE, RESULTADOS PEQUEÑOS ABAJO) =====
+  // ===== DISEÑO SIN SCROLL - CORREGIDO (CONTENEDOR DE RESULTADOS FIJO E INDEPENDIENTE) =====
   return (
     <div className="h-screen w-screen overflow-hidden bg-gradient-to-br from-gray-900 to-blue-900 text-white flex flex-col">
       {/* Header - Fijo */}
@@ -151,7 +151,7 @@ export default function ResultsDisplay() {
             </div>
           </div>
         ) : (
-          // GRID DE CANDIDATOS - ¡CORREGIDO! FOTO GRANDE ARRIBA, RESULTADOS PEQUEÑOS ABAJO
+          // GRID DE CANDIDATOS - ¡CORREGIDO! CONTENEDOR DE RESULTADOS FIJO E INDEPENDIENTE
           <div 
             className={`grid ${getGridClass()} gap-1 md:gap-2 h-full w-full`}
             style={{ gridAutoRows: '1fr' }}
@@ -161,14 +161,14 @@ export default function ResultsDisplay() {
               return (
                 <div 
                   key={candidate.id} 
-                  className="bg-gray-800 rounded-xl shadow-lg border-2 flex flex-col overflow-hidden"
+                  className="bg-gray-800 rounded-xl shadow-lg border-2 flex flex-col overflow-hidden h-full"
                   style={{ 
                     borderColor: candidate.color || '#3b82f6',
                     boxShadow: `0 4px 6px ${candidate.color}33`
                   }}
                 >
                   {/* ===== SECCIÓN SUPERIOR: DATOS BÁSICOS (NÚMERO, NOMBRE, PARTIDO) ===== */}
-                  <div className="p-1.5 bg-gray-900 border-b border-gray-700">
+                  <div className="p-1.5 bg-gray-900 border-b border-gray-700 flex-shrink-0" style={{ minHeight: '45px' }}>
                     <div className="text-center mb-1">
                       <span className="inline-block bg-blue-600 text-white text-xs md:text-sm font-bold px-2 py-0.5 rounded">
                         #{candidate.ballotNumber || '?'}
@@ -182,20 +182,20 @@ export default function ResultsDisplay() {
                     </p>
                   </div>
                   
-                  {/* ===== SECCIÓN CENTRAL: FOTO GRANDE (OCUPA ESPACIO PRINCIPAL) ===== */}
-                  <div className="flex-shrink-0 bg-gray-700 p-2 flex-grow overflow-hidden">
+                  {/* ===== SECCIÓN CENTRAL: FOTO (CON ALTURA MÁXIMA FIJA) ===== */}
+                  <div className="bg-gray-700 p-2 flex-shrink-0 overflow-hidden" style={{ maxHeight: '120px' }}>
                     {candidate.imageUrl ? (
                       <img 
                         src={candidate.imageUrl} 
                         alt={candidate.name} 
                         className="w-full h-full object-contain rounded"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=${candidate.color?.replace('#', '') || '3b82f6'}&color=fff&size=256`;
+                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=${candidate.color?.replace('#', '') || '3b82f6'}&color=fff&size=128`;
                         }}
                       />
                     ) : (
                       <div 
-                        className="w-full h-full flex items-center justify-center text-white text-4xl md:text-6xl font-bold rounded"
+                        className="w-full h-full flex items-center justify-center text-white text-3xl md:text-4xl font-bold rounded"
                         style={{ backgroundColor: (candidate.color || '#3b82f6') + 'cc' }}
                       >
                         {candidate.name.charAt(0)}
@@ -203,16 +203,16 @@ export default function ResultsDisplay() {
                     )}
                   </div>
                   
-                  {/* ===== SECCIÓN INFERIOR: RESULTADOS PEQUEÑOS (VOTOS + BARRA) ===== */}
-                  <div className="p-1.5 bg-gray-850 border-t border-gray-700 flex-shrink-0">
-                    <div className="text-center py-0.5">
+                  {/* ===== SECCIÓN INFERIOR: RESULTADOS FIJOS (INDEPENDIENTE DE LA FOTO) ===== */}
+                  <div className="p-1.5 bg-gray-850 border-t border-gray-700 flex-shrink-0" style={{ minHeight: '70px' }}>
+                    <div className="text-center py-1">
                       <div 
                         className="text-xl md:text-2xl lg:text-3xl font-bold"
                         style={{ color: candidate.color || '#3b82f6' }}
                       >
                         {candidate.votes.toLocaleString('es-CO')}
                       </div>
-                      <p className="text-[0.6rem] md:text-xs text-gray-300 mt-0.5">VOTOS</p>
+                      <p className="text-[0.65rem] md:text-xs text-gray-300 mt-1">VOTOS</p>
                     </div>
                     
                     {totalVotes > 0 && (
