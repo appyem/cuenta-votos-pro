@@ -1,0 +1,302 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Manizales",
+        "MPIO_CCNCT": "17001"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.5, 5.0], [-75.4, 5.0], [-75.4, 5.2], [-75.5, 5.2], [-75.5, 5.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Aguadas",
+        "MPIO_CCNCT": "17013"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.6, 5.3], [-75.5, 5.3], [-75.5, 5.5], [-75.6, 5.5], [-75.6, 5.3]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Anserma",
+        "MPIO_CCNCT": "17042"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.7, 5.1], [-75.6, 5.1], [-75.6, 5.3], [-75.7, 5.3], [-75.7, 5.1]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Aranzazu",
+        "MPIO_CCNCT": "17050"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.55, 5.25], [-75.45, 5.25], [-75.45, 5.4], [-75.55, 5.4], [-75.55, 5.25]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Belalcázar",
+        "MPIO_CCNCT": "17088"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.65, 5.4], [-75.55, 5.4], [-75.55, 5.55], [-75.65, 5.55], [-75.65, 5.4]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Chinchiná",
+        "MPIO_CCNCT": "17174"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.48, 5.1], [-75.38, 5.1], [-75.38, 5.25], [-75.48, 5.25], [-75.48, 5.1]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Filadelfia",
+        "MPIO_CCNCT": "17272"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.52, 5.35], [-75.42, 5.35], [-75.42, 5.5], [-75.52, 5.5], [-75.52, 5.35]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "La Dorada",
+        "MPIO_CCNCT": "17380"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-74.9, 5.3], [-74.8, 5.3], [-74.8, 5.5], [-74.9, 5.5], [-74.9, 5.3]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "La Merced",
+        "MPIO_CCNCT": "17388"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.4, 5.45], [-75.3, 5.45], [-75.3, 5.6], [-75.4, 5.6], [-75.4, 5.45]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Manzanares",
+        "MPIO_CCNCT": "17433"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.35, 5.2], [-75.25, 5.2], [-75.25, 5.35], [-75.35, 5.35], [-75.35, 5.2]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Marmato",
+        "MPIO_CCNCT": "17442"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.15, 5.05], [-75.05, 5.05], [-75.05, 5.2], [-75.15, 5.2], [-75.15, 5.05]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Marquetalia",
+        "MPIO_CCNCT": "17444"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.25, 5.15], [-75.15, 5.15], [-75.15, 5.3], [-75.25, 5.3], [-75.25, 5.15]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Marulanda",
+        "MPIO_CCNCT": "17446"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.3, 5.0], [-75.2, 5.0], [-75.2, 5.15], [-75.3, 5.15], [-75.3, 5.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Neira",
+        "MPIO_CCNCT": "17486"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.45, 5.15], [-75.35, 5.15], [-75.35, 5.3], [-75.45, 5.3], [-75.45, 5.15]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Norcasia",
+        "MPIO_CCNCT": "17495"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-74.95, 5.45], [-74.85, 5.45], [-74.85, 5.6], [-74.95, 5.6], [-74.95, 5.45]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Pácora",
+        "MPIO_CCNCT": "17513"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.38, 5.3], [-75.28, 5.3], [-75.28, 5.45], [-75.38, 5.45], [-75.38, 5.3]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Palestina",
+        "MPIO_CCNCT": "17524"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.22, 5.25], [-75.12, 5.25], [-75.12, 5.4], [-75.22, 5.4], [-75.22, 5.25]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Pensilvania",
+        "MPIO_CCNCT": "17541"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.18, 5.4], [-75.08, 5.4], [-75.08, 5.55], [-75.18, 5.55], [-75.18, 5.4]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Riosucio",
+        "MPIO_CCNCT": "17616"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.75, 5.5], [-75.65, 5.5], [-75.65, 5.65], [-75.75, 5.65], [-75.75, 5.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Risaralda",
+        "MPIO_CCNCT": "17614"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.68, 5.35], [-75.58, 5.35], [-75.58, 5.5], [-75.68, 5.5], [-75.68, 5.35]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Salamina",
+        "MPIO_CCNCT": "17653"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.55, 5.55], [-75.45, 5.55], [-75.45, 5.7], [-75.55, 5.7], [-75.55, 5.55]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Samaná",
+        "MPIO_CCNCT": "17662"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.32, 5.5], [-75.22, 5.5], [-75.22, 5.65], [-75.32, 5.65], [-75.32, 5.5]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "San José",
+        "MPIO_CCNCT": "17665"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.42, 5.55], [-75.32, 5.55], [-75.32, 5.7], [-75.42, 5.7], [-75.42, 5.55]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Supía",
+        "MPIO_CCNCT": "17777"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.58, 5.15], [-75.48, 5.15], [-75.48, 5.3], [-75.58, 5.3], [-75.58, 5.15]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Victoria",
+        "MPIO_CCNCT": "17867"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.28, 5.55], [-75.18, 5.55], [-75.18, 5.7], [-75.28, 5.7], [-75.28, 5.55]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Villamaría",
+        "MPIO_CCNCT": "17873"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.45, 5.0], [-75.35, 5.0], [-75.35, 5.15], [-75.45, 5.15], [-75.45, 5.0]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "MPIO_CNMBR": "Viterbo",
+        "MPIO_CCNCT": "17877"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-75.62, 5.2], [-75.52, 5.2], [-75.52, 5.35], [-75.62, 5.35], [-75.62, 5.2]]]
+      }
+    }
+  ]
+}

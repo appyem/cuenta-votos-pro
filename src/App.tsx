@@ -4,6 +4,8 @@ import Dashboard from './components/Dashboard';
 import WitnessForm from './components/WitnessForm';
 import AlertsView from './components/AlertsView';
 import ResultsDisplay from './components/ResultsDisplay'; // ✅ ¡NUEVO IMPORT!
+import MunicipalAnalysis from './components/MunicipalAnalysis'; 
+
 
 function Navigation() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -194,11 +196,11 @@ function AppContent() {
 function App() {
   return (
     <Router>
-      <Routes>
-        {/* ✅ ¡RUTAS EN ORDEN CORRECTO! */}
-        <Route path="/resultados" element={<ResultsDisplay />} /> {/* Primero: ruta específica */}
-        <Route path="/:municipioId" element={<WitnessForm />} /> {/* Segundo: ruta dinámica */}
-        <Route path="/" element={<AppContent />} /> {/* Tercero: ruta raíz */}
+     <Routes>
+        <Route path="/" element={<AppContent />} />
+        <Route path="/analisis-territorial" element={<MunicipalAnalysis />} /> {/* ← ¡NUEVA RUTA! */}
+        <Route path="/resultados" element={<ResultsDisplay />} />
+        <Route path="/:municipioId" element={<WitnessForm />} />
       </Routes>
     </Router>
   );
