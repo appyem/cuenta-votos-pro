@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard';
 import WitnessForm from './components/WitnessForm';
 import AlertsView from './components/AlertsView';
 import ResultsDisplay from './components/ResultsDisplay'; // ✅ ¡NUEVO IMPORT!
+import Footer from './components/Footer'; 
 import MunicipalAnalysis from './components/MunicipalAnalysis'; 
 
 
@@ -182,13 +183,8 @@ function AppContent() {
         )}
       </main>
 
-      {/* Footer (solo escritorio) */}
-      <footer className="hidden md:block bg-gray-800 text-gray-300 py-6 mt-auto">
-        <div className="container mx-auto px-4 text-center">
-          <p>© {new Date().getFullYear()} Vota Caldas - Plataforma de monitoreo electoral</p>
-          <p className="mt-1 text-sm">Información actualizada en tiempo real con reportes de testigos electorales</p>
-        </div>
-      </footer>
+       {/* Footer - Appyempresa S.A.S */}
+      <Footer />
     </div>
   );
 }

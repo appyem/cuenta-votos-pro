@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import Footer from '../components/Footer';
 
 export default function ResultsDisplay() {
   const [candidates, setCandidates] = useState<any[]>([]);
@@ -280,11 +281,7 @@ export default function ResultsDisplay() {
         )}
       </div>
 
-      {/* Footer - Fijo */}
-      <div className="shrink-0 py-1.5 border-t border-blue-800 text-center text-[0.65rem] md:text-xs">
-        <p>Sistema de Monitoreo Electoral en Tiempo Real • Caldas 2026</p>
-        <p>Datos actualizados automáticamente desde Firebase</p>
-      </div>
+       <Footer />
     </div>
   );
 }
