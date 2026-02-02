@@ -873,8 +873,7 @@ export default function WitnessForm() {
           <button
             type="button"
             onClick={handleSubmitVotes}
-            disabled={isSubmitting || !isTableAvailable || !hasIrregularity || !irregularityType || !observation.trim() || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber}
-            className={`w-full font-bold py-3 px-6 rounded-xl text-lg shadow-md transition-all transform focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+            disabled={isSubmitting || !isTableAvailable || totalVotes === 0 || !e14Image || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber}            className={`w-full font-bold py-3 px-6 rounded-xl text-lg shadow-md transition-all transform focus:outline-none focus:ring-2 focus:ring-offset-2 ${
               isSubmitting && lastSubmissionType === 'votes'
                 ? 'bg-green-400 cursor-wait'
                 : (totalVotes === 0 || !e14Image || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber)
