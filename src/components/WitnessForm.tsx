@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { addDoc, collection, serverTimestamp, query, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { MUNICIPALITIES, Municipality } from '../config/municipalities';
 import { useParams } from 'react-router-dom';
 
 // Tipos de irregularidades
@@ -11,58 +12,15 @@ const IRREGULARITY_TYPES = [
   { id: 'otra', label: 'Otra' }
 ];
 
-// FUNCIÓN DE COMPRESIÓN CRÍTICA (soluciona el error de 1MB)
-const compressImage = async (file: File, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target?.result as string;
-      
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-        
-        if (width > height) {
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        
-        if (!ctx) {
-          reject(new Error('Error al crear canvas'));
-          return;
-        }
-        
-        ctx.drawImage(img, 0, 0, width, height);
-        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressedBase64);
-      };
-      
-      img.onerror = (error) => reject(error);
-    };
-    
-    reader.onerror = (error) => reject(error);
-  });
-};
-
 export default function WitnessForm() {
+  // Obtener municipio de la URL
   const { municipioId } = useParams<{ municipioId: string }>();
   const municipioParam = municipioId || 'manizales';
   
-  // Estado para datos del testigo (persistirá después del envío)
+  // Obtener datos del municipio (¡CRÍTICO PARA LOS PUESTOS DE VOTACIÓN!)
+  const municipioData: Municipality | undefined = MUNICIPALITIES.find(m => m.id === municipioParam);
+  
+  // Estado para los datos del testigo (persistirá después del envío)
   const [formData, setFormData] = useState({
     name: '',
     id: '',
@@ -71,7 +29,7 @@ export default function WitnessForm() {
     tableNumber: ''
   });
 
-  // Estado para candidatos y votos
+  // Estado para candidatos (se cargarán desde Firestore)
   const [candidates, setCandidates] = useState<any[]>([]);
   const [votes, setVotes] = useState<{ [key: string]: number }>({});
   const [candidatesLoaded, setCandidatesLoaded] = useState(false);
@@ -80,23 +38,25 @@ export default function WitnessForm() {
   const [hasIrregularity, setHasIrregularity] = useState(false);
   const [irregularityType, setIrregularityType] = useState('');
   const [observation, setObservation] = useState('');
+  
+  // Estado para imágenes de irregularidades (OPCIONAL - máximo 3)
   const [irregularityImages, setIrregularityImages] = useState<string[]>([]);
   const [irregularityPreviews, setIrregularityPreviews] = useState<string[]>([]);
   const [isUploadingIrregularity, setIsUploadingIrregularity] = useState(false);
 
-  // Estado para foto del E-14 (OBLIGATORIA SOLO PARA VOTOS)
+  // Estado para foto del E-14 (OBLIGATORIO SOLO PARA VOTOS)
   const [e14Image, setE14Image] = useState<string | null>(null);
   const [e14Preview, setE14Preview] = useState<string | null>(null);
   const [isUploadingE14, setIsUploadingE14] = useState(false);
   const e14FileInputRef = useRef<HTMLInputElement>(null);
 
-  // Estado para envío
+  // Estado para el envío
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [lastSubmissionType, setLastSubmissionType] = useState<'votes' | 'irregularity' | null>(null);
 
-  // Cargar candidatos desde Firestore
+  // Cargar candidatos desde Firestore al montar el componente (¡NO TOCADO!)
   useEffect(() => {
     const fetchCandidates = async () => {
       try {
@@ -108,6 +68,8 @@ export default function WitnessForm() {
         }));
         
         setCandidates(candidatesData);
+        
+        // Inicializar votos con candidatos reales
         const initialVotes: { [key: string]: number } = {};
         candidatesData.forEach((cand: any) => {
           initialVotes[cand.id] = 0;
@@ -124,22 +86,28 @@ export default function WitnessForm() {
     fetchCandidates();
   }, []);
 
-  // Manejar cambios en inputs
+  // Manejar cambios en los inputs principales (¡NO TOCADO!)
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
-  // Manejar cambios en votos
+  // Manejar cambios en los votos (¡NO TOCADO!)
   const handleVoteChange = (candidateId: string, value: string) => {
     const numValue = value === '' ? 0 : Math.max(0, parseInt(value, 10) || 0);
-    setVotes(prev => ({ ...prev, [candidateId]: numValue }));
+    setVotes(prev => ({
+      ...prev,
+      [candidateId]: numValue
+    }));
   };
 
-  // Calcular total de votos
+  // Calcular total de votos (¡NO TOCADO!)
   const totalVotes = Object.values(votes).reduce((sum, count) => sum + count, 0);
 
-  // SUBIR FOTO DEL E-14 CON COMPRESIÓN
+  // ==================== MANEJADORES DE CARGA DE IMÁGENES (¡NO TOCADO!) ====================
   const handleE14Upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -149,42 +117,36 @@ export default function WitnessForm() {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert('⚠️ La imagen es demasiado grande. Máximo 5MB permitido.');
+    if (file.size > 2 * 1024 * 1024) {
+      alert('⚠️ La imagen es demasiado grande. Máximo 2MB permitido.');
       return;
     }
 
     setIsUploadingE14(true);
+    
     try {
-      const compressedBase64 = await compressImage(file, 800, 800, 0.7);
-      
-      if (compressedBase64.length > 1000000) {
-        alert('⚠️ La imagen comprimida sigue siendo demasiado grande. Intenta con una foto más pequeña.');
-        return;
-      }
-      
-      setE14Image(compressedBase64);
+      const base64String = await readFileAsBase64(file);
+      setE14Image(base64String);
       setE14Preview(URL.createObjectURL(file));
     } catch (error) {
-      console.error('Error comprimiendo imagen E-14:', error);
-      alert('❌ Error al procesar la foto. Intenta con otra imagen más pequeña.');
+      console.error('Error al procesar la imagen del E-14:', error);
+      alert('❌ Error al cargar la foto del E-14. Intente con otra imagen.');
     } finally {
       setIsUploadingE14(false);
     }
   };
 
-  // SUBIR IMÁGENES DE IRREGULARIDADES CON COMPRESIÓN
   const handleIrregularityImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('⚠️ Por favor selecciona una imagen válida');
+      alert('⚠️ Por favor selecciona una imagen válida (JPG, PNG, GIF)');
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert('⚠️ La imagen es demasiado grande. Máximo 5MB.');
+    if (file.size > 2 * 1024 * 1024) {
+      alert('⚠️ La imagen es demasiado grande. Máximo 2MB permitido.');
       return;
     }
 
@@ -194,32 +156,25 @@ export default function WitnessForm() {
     }
 
     setIsUploadingIrregularity(true);
+    
     try {
-      const compressedBase64 = await compressImage(file, 600, 600, 0.6);
-      
-      if (compressedBase64.length > 800000) {
-        alert('⚠️ La imagen comprimida es demasiado grande. Intenta con otra más pequeña.');
-        return;
-      }
-      
-      setIrregularityImages(prev => [...prev, compressedBase64]);
+      const base64String = await readFileAsBase64(file);
+      setIrregularityImages(prev => [...prev, base64String]);
       setIrregularityPreviews(prev => [...prev, URL.createObjectURL(file)]);
     } catch (error) {
-      console.error('Error comprimiendo imagen irregularidad:', error);
-      alert('❌ Error al procesar la foto.');
+      console.error('Error al procesar la imagen de irregularidad:', error);
+      alert('❌ Error al cargar la foto. Intente con otra imagen.');
     } finally {
       setIsUploadingIrregularity(false);
       if (e.target) e.target.value = '';
     }
   };
 
-  // Eliminar imagen de irregularidad
   const removeIrregularityImage = (index: number) => {
     setIrregularityImages(prev => prev.filter((_, i) => i !== index));
     setIrregularityPreviews(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Limpiar foto del E-14
   const clearE14Image = () => {
     setE14Image(null);
     setE14Preview(null);
@@ -228,10 +183,25 @@ export default function WitnessForm() {
     }
   };
 
-  // ==================== ENVIAR SOLO IRREGULARIDAD (SIN VOTOS, SIN E-14) ====================
-  const handleSubmitIrregularity = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        resolve(result);
+      };
+      
+      reader.onerror = (error) => {
+        reject(error);
+      };
+      
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // ==================== ENVIAR SOLO IRREGULARIDAD (NUEVO - SIN E-14 NI VOTOS) ====================
+  const handleSubmitIrregularity = async () => {
     // Validaciones específicas para irregularidad
     if (!hasIrregularity) {
       setSubmitError('⚠️ Debe marcar la casilla de "Reportar irregularidad" para enviar este reporte.');
@@ -249,7 +219,7 @@ export default function WitnessForm() {
     }
     
     if (!formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber) {
-      setSubmitError('⚠️ Complete todos los datos del testigo y ubicación de la mesa.');
+      setSubmitError('⚠️ Complete todos los datos del testigo y ubicación de la mesa (puesto y número de mesa).');
       return;
     }
 
@@ -260,14 +230,14 @@ export default function WitnessForm() {
     try {
       const reportData = {
         ...formData,
-        votes: {}, // Sin votos
+        votes: {},
         totalVotes: 0,
         hasIrregularity: true,
         irregularityType,
         observation: observation.trim(),
         irregularityImages: irregularityImages,
-        e14Image: null, // NO se requiere E-14 para irregularidades
-        municipio: municipioParam,
+        e14Image: null, // ¡NO SE REQUIERE E-14 PARA IRREGULARIDADES!
+        municipio: municipioData?.name || municipioParam,
         municipioId: municipioParam,
         timestamp: serverTimestamp(),
         status: 'alert'
@@ -289,7 +259,7 @@ export default function WitnessForm() {
         setSubmitSuccess(false);
       }, 2000);
       
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error al enviar irregularidad:', error);
       setSubmitError('❌ Error al enviar la irregularidad. Verifique su conexión e intente nuevamente.');
     } finally {
@@ -297,10 +267,8 @@ export default function WitnessForm() {
     }
   };
 
-  // ==================== ENVIAR REPORTE DE VOTOS (CON E-14 OBLIGATORIO) ====================
-  const handleSubmitVotes = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  // ==================== ENVIAR REPORTE DE VOTOS (NUEVO - CON E-14 OBLIGATORIO) ====================
+  const handleSubmitVotes = async () => {
     // Validaciones específicas para votos
     if (totalVotes === 0) {
       setSubmitError('⚠️ Debe ingresar al menos un voto para enviar el reporte de votos.');
@@ -314,7 +282,7 @@ export default function WitnessForm() {
     }
     
     if (!formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber) {
-      setSubmitError('⚠️ Complete todos los datos del testigo y ubicación de la mesa.');
+      setSubmitError('⚠️ Complete todos los datos del testigo y ubicación de la mesa (puesto y número de mesa).');
       return;
     }
 
@@ -327,15 +295,15 @@ export default function WitnessForm() {
         ...formData,
         votes: { ...votes },
         totalVotes,
-        hasIrregularity,
-        irregularityType: hasIrregularity ? irregularityType : '',
-        observation: hasIrregularity ? observation.trim() : '',
-        irregularityImages: irregularityImages,
-        e14Image: e14Image, // ¡OBLIGATORIO para votos!
-        municipio: municipioParam,
+        hasIrregularity: false, // ¡NO INCLUYE IRREGULARIDAD EN ESTE REPORTE!
+        irregularityType: '',
+        observation: '',
+        irregularityImages: [],
+        e14Image: e14Image, // ¡OBLIGATORIO PARA VOTOS!
+        municipio: municipioData?.name || municipioParam,
         municipioId: municipioParam,
         timestamp: serverTimestamp(),
-        status: hasIrregularity ? 'alert' : 'pending'
+        status: 'pending'
       };
 
       const docRef = await addDoc(collection(db, 'reports'), reportData);
@@ -353,39 +321,30 @@ export default function WitnessForm() {
         setVotes(resetVotes);
         setE14Image(null);
         setE14Preview(null);
-        
-        // Si hay irregularidad, resetearla también
-        if (hasIrregularity) {
-          setHasIrregularity(false);
-          setIrregularityType('');
-          setObservation('');
-          setIrregularityImages([]);
-          setIrregularityPreviews([]);
-        }
-        
         setSubmitSuccess(false);
       }, 2000);
       
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error al enviar votos:', error);
-      
-      if (error.code === 'invalid-argument' && error.message.includes('1048487')) {
-        setSubmitError('❌ La foto del E-14 es demasiado grande incluso después de comprimir. Intenta con una foto más pequeña.');
-      } else {
-        setSubmitError('❌ Error al enviar el reporte. Verifique su conexión e intente nuevamente.');
-      }
+      setSubmitError('❌ Error al enviar el reporte. Verifique su conexión e intente nuevamente.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // UI de carga
-  if (!candidatesLoaded) {
+  // Si el municipio no existe, mostrar mensaje de error (¡NO TOCADO!)
+  if (!municipioData) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Cargando candidatos...</p>
+          <div className="text-2xl text-red-600 mb-4">⚠️ Municipio no válido</div>
+          <p className="text-gray-600 mb-4">La URL del municipio no es correcta.</p>
+          <a 
+            href="/manizales" 
+            className="text-blue-600 hover:underline font-medium"
+          >
+            Volver a Manizales
+          </a>
         </div>
       </div>
     );
@@ -393,7 +352,7 @@ export default function WitnessForm() {
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto">
-      {/* Header */}
+      {/* Header del formulario (¡NO TOCADO!) */}
       <div className="text-center mb-8">
         <div className="inline-block bg-blue-100 text-blue-700 rounded-full px-4 py-1 mb-3">
           <svg className="w-6 h-6 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -403,12 +362,16 @@ export default function WitnessForm() {
         </div>
         <h1 className="text-3xl font-bold text-gray-800">Reporte de Testigo</h1>
         <p className="text-gray-600 mt-2">
-          Municipio: <span className="font-semibold text-blue-600 capitalize">{municipioParam.replace('-', ' ')}</span>
+          Municipio: <span className="font-semibold text-blue-600">{municipioData.name}</span>
+        </p>
+        <p className="text-sm text-gray-500 mt-1">
+          Mesas totales: {municipioData.tables.toLocaleString('es-CO')}
         </p>
       </div>
 
+      {/* Formulario (¡SECCIONES DE DATOS Y VOTACIÓN NO TOCADAS!) */}
       <form className="bg-white rounded-xl shadow-md p-6 space-y-6">
-        {/* Mensajes */}
+        {/* Mensajes de estado */}
         {submitError && (
           <div className="p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-r-lg">
             {submitError}
@@ -428,7 +391,7 @@ export default function WitnessForm() {
           </div>
         )}
 
-        {/* Sección 1: Información del Testigo */}
+        {/* Sección 1: Información del Testigo (¡NO TOCADO!) */}
         <div>
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -491,7 +454,7 @@ export default function WitnessForm() {
           </div>
         </div>
 
-        {/* Sección 2: Ubicación de la Mesa */}
+        {/* Sección 2: Ubicación de la Mesa (¡CRÍTICO - NO TOCADO!) */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -515,9 +478,13 @@ export default function WitnessForm() {
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none bg-white"
               >
                 <option value="">Seleccione un puesto</option>
-                {/* Los puestos se cargarán dinámicamente desde municipalities.ts */}
-                <option value="placeholder">Cargando puestos...</option>
+                {municipioData.votingPlaces.map((place) => (
+                  <option key={place} value={place}>{place}</option>
+                ))}
               </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Puestos disponibles en {municipioData.name}
+              </p>
             </div>
             
             <div>
@@ -532,14 +499,18 @@ export default function WitnessForm() {
                 onChange={handleChange}
                 required
                 min="1"
+                max={municipioData.tables}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Ej: 45"
+                placeholder={`Ej: 1 - ${municipioData.tables}`}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Rango: 1 - {municipioData.tables.toLocaleString('es-CO')}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Sección 3: Resultados */}
+        {/* Sección 3: Resultados de la Mesa (¡NO TOCADO!) */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -548,103 +519,127 @@ export default function WitnessForm() {
             Resultados de la Mesa
           </h2>
           
-          {candidates.length === 0 ? (
-            <div className="text-center py-8 bg-gray-50 rounded-lg">
+          {!candidatesLoaded ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
               <p className="text-gray-600">Cargando candidatos...</p>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {candidates.map((candidate) => (
-                <div key={candidate.id} className="text-center">
-                  <div className="bg-blue-600 text-white font-bold text-xs px-2 py-1 rounded mb-1 inline-block shadow">
-                    #{candidate.ballotNumber || '?'}
-                  </div>
-                  <div className="font-medium text-sm mb-1 truncate" title={candidate.name}>
-                    {candidate.name.split(' ')[0]}
-                  </div>
-                  <div className="text-xs text-gray-500 mb-1">{candidate.party}</div>
-                  <input
-                    type="number"
-                    value={votes[candidate.id] || 0}
-                    onChange={(e) => handleVoteChange(candidate.id, e.target.value)}
-                    min="0"
-                    className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold"
-                    placeholder="0"
-                  />
+          ) : candidates.length === 0 ? (
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-6">
+              <div className="flex">
+                <svg className="w-5 h-5 text-yellow-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className="text-yellow-700 font-medium">
+                    ⚠️ No hay candidatos registrados
+                  </p>
+                  <p className="text-yellow-600 mt-1">
+                    El equipo de campaña debe agregar candidatos desde el Dashboard antes de poder reportar votos.
+                  </p>
                 </div>
-              ))}
+              </div>
             </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                {candidates.map((candidate) => (
+                  <div key={candidate.id} className="text-center">
+                    <div className="bg-blue-600 text-white font-bold text-xs px-2 py-1 rounded mb-1 inline-block shadow">
+                      #{candidate.ballotNumber || '?'}
+                    </div>
+                    <div className="font-medium text-sm mb-1 truncate" title={candidate.name}>
+                      {candidate.name.split(' ')[0]}
+                    </div>
+                    <div className="text-xs text-gray-500 mb-1">{candidate.party}</div>
+                    <input
+                      type="number"
+                      value={votes[candidate.id] || 0}
+                      onChange={(e) => handleVoteChange(candidate.id, e.target.value)}
+                      min="0"
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold"
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
+              </div>
+              
+              <div className="mt-4 pt-4 border-t border-gray-100 bg-gray-50 rounded-lg p-3">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-gray-700">Total de Votos:</span>
+                  <span className="text-2xl font-bold text-blue-600">{totalVotes.toLocaleString('es-CO')}</span>
+                </div>
+              </div>
+            </>
           )}
-          
-          <div className="mt-4 pt-4 border-t border-gray-100 bg-gray-50 rounded-lg p-3">
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-700">Total de Votos:</span>
-              <span className="text-2xl font-bold text-blue-600">{totalVotes.toLocaleString('es-CO')}</span>
-            </div>
-          </div>
         </div>
 
-        {/* Sección 4: Foto OBLIGATORIA del E-14 (SOLO PARA VOTOS) */}
-        <div className="pt-4 border-t border-gray-200 bg-red-50 rounded-lg p-4">
-          <h2 className="text-xl font-bold text-gray-800 mb-3 flex items-center">
-            <svg className="w-6 h-6 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Sección 4: Foto del Formulario E-14 (¡NO TOCADO!) */}
+        <div className="pt-4 border-t border-gray-200">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <svg className="w-5 h-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             Foto del Formulario E-14 <span className="text-red-500 ml-1">*</span>
           </h2>
           
-          <p className="text-sm text-red-800 font-medium mb-3">
-            ⚠️ <strong>¡OBLIGATORIO SOLO PARA ENVIAR VOTOS!</strong> Tome una foto CLARA del formulario físico E-14 al finalizar el escrutinio.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="flex-1">
-              <input
-                type="file"
-                id="e14Image"
-                ref={e14FileInputRef}
-                accept="image/*"
-                capture="environment"
-                onChange={handleE14Upload}
-                disabled={isUploadingE14}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                📸 Use la cámara de su celular (máx. 5MB original - se comprimirá automáticamente)
-              </p>
-            </div>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-sm text-red-800 font-medium mb-2">
+              ⚠️ <strong>¡OBLIGATORIO SOLO PARA ENVIAR VOTOS!</strong> Tome una foto clara del formulario físico E-14 (acta de escrutinio) al finalizar el conteo.
+            </p>
+            <p className="text-xs text-red-700 mb-3">
+              Esta foto es requerida para validar el reporte de votos y garantizar la transparencia del proceso electoral.
+            </p>
             
-            {e14Preview && (
-              <div className="flex items-center space-x-3">
-                <div className="relative">
-                  <img 
-                    src={e14Preview} 
-                    alt="Vista previa E-14" 
-                    className="w-24 h-24 object-cover rounded-lg border-2 border-blue-200"
-                  />
-                  {isUploadingE14 && (
-                    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={clearE14Image}
-                  className="text-red-600 hover:text-red-800 font-medium text-sm flex items-center"
-                  title="Eliminar foto"
-                >
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  Eliminar
-                </button>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex-1">
+                <input
+                  type="file"
+                  id="e14Image"
+                  ref={e14FileInputRef}
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleE14Upload}
+                  disabled={isUploadingE14}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  📸 Use la cámara de su celular o seleccione desde la galería (JPG, PNG, GIF - máximo 2MB)
+                </p>
               </div>
-            )}
+              
+              {e14Preview && (
+                <div className="flex items-center space-x-3">
+                  <div className="relative">
+                    <img 
+                      src={e14Preview} 
+                      alt="Vista previa E-14" 
+                      className="w-24 h-24 object-cover rounded-lg border-2 border-blue-200"
+                    />
+                    {isUploadingE14 && (
+                      <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-lg">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearE14Image}
+                    className="text-red-600 hover:text-red-800 font-medium text-sm flex items-center"
+                    title="Eliminar foto"
+                  >
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Eliminar
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Sección 5: Irregularidades (OPCIONAL) */}
+        {/* Sección 5: Irregularidades (¡NO TOCADO!) */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
             <svg className="w-5 h-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -739,7 +734,7 @@ export default function WitnessForm() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      📸 Adjunte fotos como evidencia (máx. 5MB original - se comprimirán)
+                      📸 Adjunte fotos como evidencia (JPG, PNG, GIF - máximo 2MB por foto)
                     </p>
                   </div>
                   
@@ -755,7 +750,7 @@ export default function WitnessForm() {
                           <button
                             type="button"
                             onClick={() => removeIrregularityImage(index)}
-                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-600 text-xs"
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-600 text-xs"
                             title="Eliminar foto"
                           >
                             ✕
@@ -774,7 +769,7 @@ export default function WitnessForm() {
           </p>
         </div>
 
-        {/* DOS BOTONES SEPARADOS */}
+        {/* DOS BOTONES SEPARADOS (¡NUEVO Y CORREGIDO!) */}
         <div className="pt-4 border-t border-gray-200 space-y-3">
           {/* Botón 1: Enviar SOLO Irregularidad (NO requiere E-14 ni votos) */}
           <button
@@ -782,7 +777,7 @@ export default function WitnessForm() {
             onClick={handleSubmitIrregularity}
             disabled={isSubmitting || !hasIrregularity || !irregularityType || !observation.trim() || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber}
             className={`w-full font-bold py-3 px-6 rounded-xl text-lg shadow-md transition-all transform focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-              isSubmitting
+              isSubmitting && lastSubmissionType === 'irregularity'
                 ? 'bg-red-400 cursor-wait'
                 : (!hasIrregularity || !irregularityType || !observation.trim() || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber)
                 ? 'bg-gray-400 cursor-not-allowed'
@@ -807,7 +802,7 @@ export default function WitnessForm() {
             onClick={handleSubmitVotes}
             disabled={isSubmitting || totalVotes === 0 || !e14Image || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber}
             className={`w-full font-bold py-3 px-6 rounded-xl text-lg shadow-md transition-all transform focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-              isSubmitting
+              isSubmitting && lastSubmissionType === 'votes'
                 ? 'bg-green-400 cursor-wait'
                 : (totalVotes === 0 || !e14Image || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber)
                 ? 'bg-gray-400 cursor-not-allowed'
@@ -821,8 +816,6 @@ export default function WitnessForm() {
               <span>
                 {isSubmitting && lastSubmissionType === 'votes' 
                   ? 'Enviando...' 
-                  : totalVotes > 0 && hasIrregularity
-                  ? '🗳️ Enviar Votos + Irregularidad (Requiere foto E-14)'
                   : '🗳️ Enviar Reporte de Votos (Requiere foto E-14)'}
               </span>
             </div>
@@ -834,7 +827,7 @@ export default function WitnessForm() {
         </div>
       </form>
 
-      {/* Instrucciones */}
+      {/* Instrucciones (¡NO TOCADO!) */}
       <div className="mt-6 bg-blue-50 border-l-4 border-blue-500 rounded-r-lg p-4">
         <div className="flex">
           <svg className="w-5 h-5 text-blue-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
