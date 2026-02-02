@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { addDoc, collection, serverTimestamp, query, orderBy, getDocs } from 'firebase/firestore';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { addDoc, collection, serverTimestamp, query, orderBy, getDocs, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { MUNICIPALITIES, Municipality } from '../config/municipalities';
 import { useParams } from 'react-router-dom';
+
 
 // Tipos de irregularidades
 const IRREGULARITY_TYPES = [
@@ -55,6 +56,10 @@ export default function WitnessForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [lastSubmissionType, setLastSubmissionType] = useState<'votes' | 'irregularity' | null>(null);
+
+  // Estado para validación de mesa duplicada
+  const [isTableAvailable, setIsTableAvailable] = useState(true);
+  const [tableError, setTableError] = useState<string | null>(null);
 
   // Cargar candidatos desde Firestore al montar el componente (¡NO TOCADO!)
   useEffect(() => {
@@ -200,7 +205,56 @@ export default function WitnessForm() {
     });
   };
 
-  // ==================== ENVIAR SOLO IRREGULARIDAD (NUEVO - SIN E-14 NI VOTOS) ====================
+
+   // ==================== VALIDAR MESA DUPLICADA ====================
+  const checkTableAvailability = useCallback(async (puesto: string, mesa: string) => {
+    if (!puesto || !mesa || !municipioParam) {
+      setIsTableAvailable(true);
+      setTableError(null);
+      return;
+    }
+
+    try {
+      // Consultar si ya existe un reporte con esta clave
+      const reportsRef = collection(db, 'reports');
+      const q = query(
+        reportsRef,
+        where('municipioId', '==', municipioParam),
+        where('votingPlace', '==', puesto),
+        where('tableNumber', '==', mesa)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        setIsTableAvailable(false);
+        setTableError('⚠️ Esta mesa ya fue reportada. Verifique el número o contacte al coordinador.');
+      } else {
+        setIsTableAvailable(true);
+        setTableError(null);
+      }
+    } catch (error) {
+      console.error('Error validando disponibilidad de mesa:', error);
+      // En caso de error, permitir continuar pero mostrar advertencia
+      setIsTableAvailable(true);
+      setTableError('⚠️ No se pudo verificar la mesa. Verifique conexión a internet.');
+    }
+  }, [municipioParam]);
+
+  // Validar mesa automáticamente al cambiar puesto o número
+  useEffect(() => {
+    if (formData.votingPlace && formData.tableNumber) {
+      checkTableAvailability(formData.votingPlace, formData.tableNumber);
+    } else {
+      setIsTableAvailable(true);
+      setTableError(null);
+    }
+  }, [formData.votingPlace, formData.tableNumber, checkTableAvailability]);
+
+
+
+
+    // ==================== ENVIAR SOLO IRREGULARIDAD (NUEVO - SIN E-14 NI VOTOS) ====================
   const handleSubmitIrregularity = async () => {
     // Validaciones específicas para irregularidad
     if (!hasIrregularity) {
@@ -230,6 +284,7 @@ export default function WitnessForm() {
     try {
       const reportData = {
         ...formData,
+        reportKey: `${municipioParam}_${formData.votingPlace}_${formData.tableNumber}`, // ← ¡CAMPO ÚNICO AGREGADO!
         votes: {},
         totalVotes: 0,
         hasIrregularity: true,
@@ -266,8 +321,7 @@ export default function WitnessForm() {
       setIsSubmitting(false);
     }
   };
-
-  // ==================== ENVIAR REPORTE DE VOTOS (NUEVO - CON E-14 OBLIGATORIO) ====================
+// ==================== ENVIAR REPORTE DE VOTOS (NUEVO - CON E-14 OBLIGATORIO) ====================
   const handleSubmitVotes = async () => {
     // Validaciones específicas para votos
     if (totalVotes === 0) {
@@ -293,6 +347,7 @@ export default function WitnessForm() {
     try {
       const reportData = {
         ...formData,
+        reportKey: `${municipioParam}_${formData.votingPlace}_${formData.tableNumber}`, // ← ¡CAMPO ÚNICO AGREGADO!
         votes: { ...votes },
         totalVotes,
         hasIrregularity: false, // ¡NO INCLUYE IRREGULARIDAD EN ESTE REPORTE!
@@ -510,6 +565,19 @@ export default function WitnessForm() {
           </div>
         </div>
 
+
+         {/* Mensaje de error si mesa duplicada */}
+          {tableError && (
+            <div className="mt-3 p-3 bg-red-50 border-l-4 border-red-500 rounded-r-lg">
+              <div className="flex">
+                <svg className="w-5 h-5 text-red-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-red-700 text-sm font-medium">{tableError}</p>
+              </div>
+            </div>
+          )}
+
         {/* Sección 3: Resultados de la Mesa (¡NO TOCADO!) */}
         <div className="pt-4 border-t border-gray-200">
           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
@@ -553,13 +621,18 @@ export default function WitnessForm() {
                     </div>
                     <div className="text-xs text-gray-500 mb-1">{candidate.party}</div>
                     <input
-                      type="number"
-                      value={votes[candidate.id] || 0}
-                      onChange={(e) => handleVoteChange(candidate.id, e.target.value)}
-                      min="0"
-                      className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center font-bold"
-                      placeholder="0"
-                    />
+                    type="number"
+                    value={votes[candidate.id] || 0}
+                    onChange={(e) => handleVoteChange(candidate.id, e.target.value)}
+                    min="0"
+                    disabled={!isTableAvailable}
+                    className={`w-full px-2 py-2 border rounded-lg text-center font-bold ${
+                      !isTableAvailable 
+                        ? 'bg-gray-100 border-gray-300 cursor-not-allowed' 
+                        : 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                    }`}
+                    placeholder="0"
+                  />
                   </div>
                 ))}
               </div>
@@ -775,7 +848,7 @@ export default function WitnessForm() {
           <button
             type="button"
             onClick={handleSubmitIrregularity}
-            disabled={isSubmitting || !hasIrregularity || !irregularityType || !observation.trim() || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber}
+            disabled={isSubmitting || !isTableAvailable || !hasIrregularity || !irregularityType || !observation.trim() || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber}
             className={`w-full font-bold py-3 px-6 rounded-xl text-lg shadow-md transition-all transform focus:outline-none focus:ring-2 focus:ring-offset-2 ${
               isSubmitting && lastSubmissionType === 'irregularity'
                 ? 'bg-red-400 cursor-wait'
@@ -800,7 +873,7 @@ export default function WitnessForm() {
           <button
             type="button"
             onClick={handleSubmitVotes}
-            disabled={isSubmitting || totalVotes === 0 || !e14Image || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber}
+            disabled={isSubmitting || !isTableAvailable || !hasIrregularity || !irregularityType || !observation.trim() || !formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber}
             className={`w-full font-bold py-3 px-6 rounded-xl text-lg shadow-md transition-all transform focus:outline-none focus:ring-2 focus:ring-offset-2 ${
               isSubmitting && lastSubmissionType === 'votes'
                 ? 'bg-green-400 cursor-wait'
