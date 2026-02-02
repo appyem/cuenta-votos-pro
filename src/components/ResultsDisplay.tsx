@@ -82,7 +82,16 @@ export default function ResultsDisplay() {
   const isLoading = loadingCandidates || loadingReports;
   const hasData = candidates.length > 0 && reports.length > 0;
 
-  // ===== DISEÑO SIN SCROLL (PANTALLA COMPLETA) =====
+  // ===== CALCULAR COLUMNAS DINÁMICAS SEGÚN CANTIDAD DE CANDIDATOS =====
+  const getGridClass = () => {
+    const count = candidatesWithVotes.length;
+    if (count <= 4) return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4'; // 1-4 candidatos
+    if (count <= 8) return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'; // 5-8 candidatos
+    if (count <= 12) return 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'; // 9-12
+    return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'; // 13+
+  };
+
+  // ===== DISEÑO SIN SCROLL (PANTALLA COMPLETA) - CORREGIDO =====
   return (
     <div className="h-screen w-screen overflow-hidden bg-gradient-to-br from-gray-900 to-blue-900 text-white flex flex-col">
       {/* Header - Fijo */}
@@ -107,11 +116,11 @@ export default function ResultsDisplay() {
         </div>
       </div>
 
-      {/* Contenido Principal - OCUPA TODO EL ESPACIO DISPONIBLE */}
-      <div className="flex-grow flex items-center justify-center p-2 md:p-4">
+      {/* Contenido Principal - OCUPA TODO EL ESPACIO DISPONIBLE SIN SCROLL */}
+      <div className="flex-grow flex flex-col p-1 md:p-2 overflow-hidden">
         {isLoading ? (
           // Pantalla de carga SIN scroll
-          <div className="text-center">
+          <div className="flex flex-col items-center justify-center h-full">
             <div className="animate-spin rounded-full h-24 w-24 border-b-4 border-blue-500 mx-auto mb-4"></div>
             <p className="text-2xl md:text-3xl font-bold">Conectando con Firebase...</p>
             <div className="mt-4 grid grid-cols-2 gap-4 max-w-md mx-auto">
@@ -131,7 +140,7 @@ export default function ResultsDisplay() {
           </div>
         ) : !hasData ? (
           // Mensaje sin datos SIN scroll
-          <div className="text-center max-w-3xl mx-auto p-6">
+          <div className="flex flex-col items-center justify-center h-full max-w-3xl mx-auto p-6">
             <div className="text-8xl mb-6 animate-bounce">🗳️</div>
             <h2 className="text-5xl md:text-6xl font-bold mb-4">SIN RESULTADOS AÚN</h2>
             <p className="text-2xl md:text-3xl text-gray-300 mb-6">
@@ -144,12 +153,11 @@ export default function ResultsDisplay() {
             </div>
           </div>
         ) : (
-          // GRID DE CANDIDATOS - AJUSTADO A PANTALLA COMPLETA SIN SCROLL
+          // GRID DE CANDIDATOS - ¡CORREGIDO! SIN SUPERPOSICIÓN
           <div 
-            className="w-full h-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3 p-1"
+            className={`grid ${getGridClass()} gap-1 md:gap-2 h-full w-full`}
             style={{ 
-              gridTemplateRows: 'repeat(auto-fill, minmax(0, 1fr))',
-              maxHeight: '100%'
+              gridAutoRows: '1fr' // ¡CLAVE! Cada fila ocupa igual fracción de altura
             }}
           >
             {candidatesWithVotes.map((candidate) => {
@@ -157,26 +165,26 @@ export default function ResultsDisplay() {
               return (
                 <div 
                   key={candidate.id} 
-                  className="bg-gray-800 rounded-2xl shadow-xl border-2 flex flex-col"
+                  className="bg-gray-800 rounded-xl shadow-lg border-2 flex flex-col overflow-hidden"
                   style={{ 
                     borderColor: candidate.color || '#3b82f6',
-                    boxShadow: `0 10px 15px -3px ${candidate.color}33`
+                    boxShadow: `0 4px 6px ${candidate.color}33`
                   }}
                 >
-                  {/* Foto del candidato - PROPORCIONAL */}
-                  <div className="h-36 md:h-44 bg-gray-700 flex items-center justify-center p-2">
+                  {/* Foto del candidato - PROPORCIONAL Y RESPONSIVE */}
+                  <div className="flex-shrink-0 bg-gray-700 flex items-center justify-center p-1 md:p-2 min-h-[60px] md:min-h-[80px]">
                     {candidate.imageUrl ? (
                       <img 
                         src={candidate.imageUrl} 
                         alt={candidate.name} 
-                        className="max-h-full max-w-full rounded-lg object-contain"
+                        className="max-h-full max-w-full rounded object-contain"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=${candidate.color?.replace('#', '') || '3b82f6'}&color=fff&size=256`;
+                          (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=${candidate.color?.replace('#', '') || '3b82f6'}&color=fff&size=128`;
                         }}
                       />
                     ) : (
                       <div 
-                        className="w-full h-full flex items-center justify-center text-white text-5xl md:text-6xl font-bold rounded-lg"
+                        className="w-full h-full flex items-center justify-center text-white text-3xl md:text-4xl font-bold rounded"
                         style={{ backgroundColor: (candidate.color || '#3b82f6') + 'cc' }}
                       >
                         {candidate.name.charAt(0)}
@@ -184,42 +192,42 @@ export default function ResultsDisplay() {
                     )}
                   </div>
                   
-                  {/* Información compacta */}
-                  <div className="p-2 md:p-3 flex flex-col flex-grow">
-                    <div className="text-center mb-1">
-                      <span className="inline-block bg-blue-600 text-white text-lg md:text-xl font-bold px-3 py-1 rounded-full">
+                  {/* Información compacta - OCUPA ESPACIO DISPONIBLE */}
+                  <div className="p-1.5 md:p-2 flex flex-col flex-grow min-h-0">
+                    <div className="text-center mb-0.5">
+                      <span className="inline-block bg-blue-600 text-white text-xs md:text-sm font-bold px-2 py-0.5 rounded">
                         #{candidate.ballotNumber || '?'}
                       </span>
                     </div>
                     
-                    <h2 className="text-xl md:text-2xl font-bold text-center truncate">{candidate.name}</h2>
-                    <p className="text-xs md:text-sm text-blue-300 text-center mb-1 truncate">{candidate.party}</p>
+                    <h2 className="text-sm md:text-base font-bold text-center truncate px-1">{candidate.name}</h2>
+                    <p className="text-[0.65rem] md:text-xs text-blue-300 text-center mb-0.5 truncate px-1">{candidate.party}</p>
                     
-                    <div className="text-center my-1">
-                      <span className="inline-block bg-purple-900/70 text-purple-300 px-2 py-0.5 rounded text-xs">
+                    <div className="text-center my-0.5">
+                      <span className="inline-block bg-purple-900/70 text-purple-200 px-1.5 py-0.5 rounded text-[0.6rem] md:text-xs">
                         {candidate.position}
                       </span>
                     </div>
                     
                     {/* Contador de votos - AJUSTADO */}
-                    <div className="text-center my-1 flex-grow flex flex-col justify-center">
+                    <div className="text-center my-1 flex-grow flex flex-col justify-center min-h-[60px]">
                       <div 
-                        className="text-4xl md:text-5xl lg:text-6xl font-bold"
+                        className="text-2xl md:text-3xl lg:text-4xl font-bold"
                         style={{ color: candidate.color || '#3b82f6' }}
                       >
                         {candidate.votes.toLocaleString('es-CO')}
                       </div>
-                      <p className="text-xs md:text-sm text-gray-300 mt-0.5">VOTOS</p>
+                      <p className="text-[0.65rem] md:text-xs text-gray-300 mt-0.5">VOTOS</p>
                     </div>
                     
                     {/* Barra de progreso compacta */}
                     {totalVotes > 0 && (
                       <div className="mt-1">
-                        <div className="flex justify-between text-[0.65rem] md:text-xs mb-0.5">
-                          <span>Participación:</span>
-                          <span className="font-bold">{percentage}%</span>
+                        <div className="flex justify-between text-[0.6rem] md:text-xs mb-0.5">
+                          <span className="truncate max-w-[60%]">Participación:</span>
+                          <span className="font-bold flex-shrink-0">{percentage}%</span>
                         </div>
-                        <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div className="w-full bg-gray-700 rounded-full h-1.5">
                           <div 
                             className="h-full rounded-full transition-all duration-1000"
                             style={{ 
@@ -239,9 +247,9 @@ export default function ResultsDisplay() {
       </div>
 
       {/* Footer - Fijo */}
-      <div className="shrink-0 py-2 border-t border-blue-800 text-center text-xs md:text-sm">
+      <div className="shrink-0 py-1.5 border-t border-blue-800 text-center text-[0.65rem] md:text-xs">
         <p>Sistema de Monitoreo Electoral en Tiempo Real • Caldas 2026</p>
-        <p className="mt-1">Datos actualizados automáticamente desde Firebase</p>
+        <p>Datos actualizados automáticamente desde Firebase</p>
       </div>
     </div>
   );
