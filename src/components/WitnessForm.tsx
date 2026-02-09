@@ -112,30 +112,47 @@ export default function WitnessForm() {
   // Calcular total de votos (¡NO TOCADO!)
   const totalVotes = Object.values(votes).reduce((sum, count) => sum + count, 0);
 
-  // ==================== MANEJADORES DE CARGA DE IMÁGENES (¡NO TOCADO!) ====================
+  // ==================== MANEJADOR DE CARGA DE IMAGEN E-14 CON COMPRESIÓN OBLIGATORIA ====================
   const handleE14Upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validar tipo de archivo
     if (!file.type.startsWith('image/')) {
       alert('⚠️ Por favor selecciona una imagen válida (JPG, PNG, GIF)');
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('⚠️ La imagen es demasiado grande. Máximo 2MB permitido.');
+    // Validar tamaño ORIGINAL (antes de comprimir) - permitir hasta 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      alert('⚠️ La imagen es demasiado grande. Máximo 5MB permitido.');
       return;
     }
 
     setIsUploadingE14(true);
     
     try {
-      const base64String = await readFileAsBase64(file);
-      setE14Image(base64String);
+      // COMPRESIÓN OBLIGATORIA antes de convertir a base64
+      const compressedBase64 = await compressImage(file, 800, 800, 0.7);
+      
+      // Validar tamaño FINAL después de compresión (debe ser < 900KB para Firestore)
+      const base64SizeKB = Math.round((compressedBase64.length * 3) / 4 / 1024);
+      if (base64SizeKB > 900) {
+        alert(`⚠️ La imagen comprimida (${base64SizeKB}KB) sigue siendo demasiado grande para Firestore (máx 900KB). 
+Intente con una foto más pequeña, mejor iluminación o formato JPG.`);
+        return;
+      }
+      
+      setE14Image(compressedBase64);
       setE14Preview(URL.createObjectURL(file));
+      console.log(`✅ Imagen E-14 comprimida exitosamente: ${base64SizeKB}KB`);
     } catch (error) {
-      console.error('Error al procesar la imagen del E-14:', error);
-      alert('❌ Error al cargar la foto del E-14. Intente con otra imagen.');
+      console.error('Error crítico al procesar imagen E-14:', error);
+      let errorMsg = '❌ Error al procesar la foto. Intente con otra imagen.';
+      if (error instanceof Error) {
+        errorMsg = `❌ ${error.message}`;
+      }
+      alert(errorMsg);
     } finally {
       setIsUploadingE14(false);
     }
@@ -202,6 +219,63 @@ export default function WitnessForm() {
       };
       
       reader.readAsDataURL(file);
+    });
+  };
+
+
+   // ==================== FUNCIÓN DE COMPRESIÓN OBLIGATORIA PARA IMÁGENES ====================
+  const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          
+          if (!ctx) {
+            reject(new Error('Error al crear canvas para compresión'));
+            return;
+          }
+          
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Convertir a JPEG con compresión
+          let compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+          
+          // Compresión adaptativa si sigue siendo muy grande
+          while (compressedBase64.length > 900 * 1024 && quality > 0.4) {
+            quality -= 0.1;
+            compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+          }
+          
+          resolve(compressedBase64);
+        };
+        
+        img.onerror = () => reject(new Error('Error al cargar la imagen para compresión'));
+      };
+      
+      reader.onerror = () => reject(new Error('Error al leer el archivo de imagen'));
     });
   };
 
@@ -677,9 +751,8 @@ export default function WitnessForm() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 file:mr-3 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  📸 Use la cámara de su celular o seleccione desde la galería (JPG, PNG, GIF - máximo 2MB)
+                  📸 Use la cámara de su celular (JPG, PNG, GIF - máximo 5MB original, se comprimirá automáticamente a menos de 900KB)
                 </p>
-              </div>
               
               {e14Preview && (
                 <div className="flex items-center space-x-3">
@@ -708,6 +781,7 @@ export default function WitnessForm() {
                   </button>
                 </div>
               )}
+              </div>
             </div>
           </div>
         </div>
