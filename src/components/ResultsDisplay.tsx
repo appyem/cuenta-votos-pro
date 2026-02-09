@@ -87,7 +87,6 @@ export default function ResultsDisplay() {
   const hasReachedThreshold = totalVotes >= CALDAS_THRESHOLD;
   const winner = hasReachedThreshold ? candidatesWithVotes[0] : null;
   const remainingVotes = CALDAS_THRESHOLD - totalVotes;
-  const candidateCount = candidatesWithVotes.length;
 
   const isLoading = loadingCandidates || loadingReports;
   const hasData = candidates.length > 0 && reports.length > 0;
