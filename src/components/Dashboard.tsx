@@ -27,13 +27,181 @@ export default function Dashboard() {
     totalVotes: 0,
     activeAlerts: 0
   });
-  
   const [votesChartData, setVotesChartData] = useState<any[]>([]);
   const [candidateList, setCandidateList] = useState<any[]>([]);
-  const [candidates, setCandidates] = useState<any[]>([]);
 
   // Estado para selección de municipio
   const [selectedMunicipio, setSelectedMunicipio] = useState('manizales');
+
+  // Estado para gestión de candidatos
+  const [candidateForm, setCandidateForm] = useState({
+    name: '',
+    party: '',
+    color: '#3b82f6',
+    imageUrl: '',
+    position: 'gobernacion',
+    ballotNumber: ''
+  });
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [showCandidateForm, setShowCandidateForm] = useState(false);
+  const [isSubmittingCandidate, setIsSubmittingCandidate] = useState(false);
+
+  // Estado para carga de imagen
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ✅ ESTADO PARA TESTIGOS (MINIMAL Y SEGURO)
+  const [witnesses, setWitnesses] = useState<any[]>([]);
+  const [selectedE14Image, setSelectedE14Image] = useState<string | null>(null);
+  const [reports, setReports] = useState<any[]>([]);
+
+  const getWitnessData = async (witnessId: string) => {
+  try {
+    const witnessDoc = await getDoc(doc(db, 'witnesses', witnessId));
+    if (witnessDoc.exists()) {
+      const data = witnessDoc.data();
+      return {
+        docId: witnessDoc.id,  // ← Firestore ID (único)
+        id: data.id || 'N/A',  // ← Cédula del testigo (evita duplicado)
+        name: data.name || 'N/A',
+        phone: data.phone || 'N/A',
+        votingPlace: data.votingPlace || 'N/A',
+        tableNumber: data.tableNumber || 'N/A',
+        municipio: data.municipio || 'N/A',
+        lastReportAt: data.lastReportAt?.toDate?.() || null
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error obteniendo datos del testigo:', error);
+    return null;
+  }
+};
+
+  // Calcular estadísticas
+  const calculateStats = useCallback((reportsData: any[]) => {
+    let totalVotes = 0;
+    const candidateTotals: { [key: string]: number } = {};
+
+    candidates.forEach(cand => {
+      candidateTotals[cand.id] = 0;
+    });
+
+    reportsData.forEach(report => {
+      if (report.votes && typeof report.votes === 'object') {
+        Object.entries(report.votes).forEach(([candId, voteCount]) => {
+          if (typeof voteCount === 'number' && candidateTotals[candId] !== undefined) {
+            candidateTotals[candId] += voteCount;
+            totalVotes += voteCount;
+          }
+        });
+      }
+    });
+
+    setStats({
+      reportedTables: reportsData.length,
+      totalTables: MUNICIPALITIES.reduce((sum, m) => sum + m.tables, 0),
+      totalVotes,
+      activeAlerts: reportsData.filter(r => r.hasIrregularity && !r.resolved).length
+    });
+
+    const chartData = candidates.map(cand => ({
+      name: cand.name.split(' ')[0],
+      votes: candidateTotals[cand.id] || 0,
+      color: cand.color || '#3b82f6'
+    }));
+    setVotesChartData(chartData);
+
+    const candidateData = candidates.map(cand => ({
+      ...cand,
+      votes: candidateTotals[cand.id] || 0
+    }));
+    setCandidateList(candidateData);
+  }, [candidates]);
+
+  // Conectar con Firestore para reports
+  useEffect(() => {
+    const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q,
+      async (snapshot) => {
+        try {
+          const reportsData = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              witnessId: data.witnessId || null,
+              votes: data.votes || {},
+              totalVotes: data.totalVotes || 0,
+              hasIrregularity: data.hasIrregularity || false,
+              e14Image: data.e14Image || null,
+              municipio: data.municipio || '',
+              municipioId: data.municipioId || '',
+              votingPlace: data.votingPlace || '',
+              tableNumber: data.tableNumber || '',
+              timestamp: data.timestamp?.toDate?.() || new Date(), // ✅ CONVERSIÓN SEGURA A Date
+              ...data
+            };
+          });
+
+          // ✅ ENRIQUECER REPORTES CON DATOS DEL TESTIGO (SIN ROMPER UI)
+          const enrichedReports = await Promise.all(
+            reportsData.map(async (report) => {
+              if (report.witnessId) {
+                const witnessData = await getWitnessData(report.witnessId);
+                return { ...report, witness: witnessData };
+              }
+              return report;
+            })
+          );
+
+          setReports(enrichedReports);
+          calculateStats(enrichedReports);
+          setLoading(false);
+          setError(null);
+        } catch (err) {
+          console.error('Error processing reports:', err);
+          setError('Error al procesar los datos');
+          setLoading(false);
+        }
+      },
+      (err) => {
+        console.error('Error fetching reports from Firestore:', err);
+        setError('Error de conexión con la base de datos');
+        setLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [calculateStats]);
+
+  // ✅ CONECTAR CON FIRESTORE PARA TESTIGOS (SEGURO)
+  useEffect(() => {
+    const witnessesQuery = query(collection(db, 'witnesses'), orderBy('lastReportAt', 'desc'));
+    const unsubscribe = onSnapshot(witnessesQuery,
+      (snapshot) => {
+        try {
+          const witnessesData = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              docId: doc.id,  // ← Firestore ID (único)
+              id: data.id || 'N/A',  // ← Cédula del testigo
+              name: data.name || 'N/A',
+              phone: data.phone || 'N/A',
+              votingPlace: data.votingPlace || 'N/A',
+              tableNumber: data.tableNumber || 'N/A',
+              municipio: data.municipio || 'N/A',
+              lastReportAt: data.lastReportAt?.toDate?.() || null,
+              createdAt: data.createdAt?.toDate?.() || null
+            };
+          });
+          setWitnesses(witnessesData);
+        } catch (err) {
+          console.error('Error fetching witnesses:', err);
+        }
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
   // Conectar con Firestore para candidates
   useEffect(() => {
@@ -55,174 +223,6 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
-  // Estado para gestión de candidatos (¡AGREGADO ballotNumber!)
-  const [candidateForm, setCandidateForm] = useState({
-    name: '',
-    party: '',
-    color: '#3b82f6',
-    imageUrl: '',
-    position: 'gobernacion',
-    ballotNumber: '' // ← ¡NUEVO CAMPO OBLIGATORIO!
-  });
-  const [showCandidateForm, setShowCandidateForm] = useState(false);
-  const [witnesses, setWitnesses] = useState<any[]>([]);
-  const [selectedE14Image, setSelectedE14Image] = useState<string | null>(null);
-  const [reports, setReports] = useState<any[]>([]);
-  const [isSubmittingCandidate, setIsSubmittingCandidate] = useState(false);
-  
-  // Estado para carga de imagen
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-
-  // Obtener datos del testigo por ID
-  // Obtener datos del testigo por ID
-const getWitnessData = async (witnessId: string) => {
-  try {
-    const witnessDoc = await getDoc(doc(db, 'witnesses', witnessId));
-    if (witnessDoc.exists()) {
-      return { id: witnessDoc.id, ...witnessDoc.data() };
-    }
-    return null;
-  } catch (error) {
-    console.error('Error obteniendo datos del testigo:', error);
-    return null;
-  }
-};
-
-  // Calcular estadísticas
-const calculateStats = useCallback(async (reportsData: any[]) => {
-  let totalVotes = 0;
-  const candidateTotals: { [key: string]: number } = {};
-  
-  // Inicializar contadores con candidatos reales
-  candidates.forEach(cand => {
-    candidateTotals[cand.id] = 0;
-  });
-
-  // Enriquecer reportes con datos del testigo
-  const enrichedReports = await Promise.all(
-    reportsData.map(async (report) => {
-      if (report.witnessId) {
-        const witnessData = await getWitnessData(report.witnessId);
-        return { ...report, witness: witnessData };
-      }
-      return report;
-    })
-  );
-
-  enrichedReports.forEach(report => {
-    if (report.votes && typeof report.votes === 'object') {
-      Object.entries(report.votes).forEach(([candId, voteCount]) => {
-        if (typeof voteCount === 'number' && candidateTotals[candId] !== undefined) {
-          candidateTotals[candId] += voteCount;
-          totalVotes += voteCount;
-        }
-      });
-    }
-  });
-
-  setStats({
-    reportedTables: enrichedReports.length,
-    totalTables: MUNICIPALITIES.reduce((sum, m) => sum + m.tables, 0),
-    totalVotes,
-    activeAlerts: enrichedReports.filter(r => r.hasIrregularity && !r.resolved).length
-  });
-
-  const chartData = candidates.map(cand => ({
-    name: cand.name.split(' ')[0],
-    votes: candidateTotals[cand.id] || 0,
-    color: cand.color || '#3b82f6'
-  }));
-  setVotesChartData(chartData);
-
-  const candidateData = candidates.map(cand => ({
-    ...cand,
-    votes: candidateTotals[cand.id] || 0
-  }));
-  setCandidateList(candidateData);
-}, [candidates]);
-
-// Conectar con Firestore para reports
-useEffect(() => {
-  const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
-  const unsubscribe = onSnapshot(q,
-    async (snapshot) => {
-      try {
-        // Tipar explícitamente el documento del reporte
-        const reportsData = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            witnessId: data.witnessId || null, // ← EXPLÍCITO
-            votes: data.votes || {},
-            totalVotes: data.totalVotes || 0,
-            hasIrregularity: data.hasIrregularity || false,
-            irregularityType: data.irregularityType || '',
-            observation: data.observation || '',
-            e14Image: data.e14Image || null,
-            municipio: data.municipio || '',
-            municipioId: data.municipioId || '',
-            votingPlace: data.votingPlace || '',
-            tableNumber: data.tableNumber || '',
-            timestamp: data.timestamp?.toDate?.() || new Date(),
-            ...data // Resto de campos
-          };
-        });
-        
-        // Enriquecer reportes con datos del testigo
-        const enrichedReports = await Promise.all(
-          reportsData.map(async (report) => {
-            if (report.witnessId) {
-              const witnessData = await getWitnessData(report.witnessId);
-              return { ...report, witness: witnessData };
-            }
-            return report;
-          })
-        );
-        
-        setReports(enrichedReports); // ← GUARDAR REPORTES ENRIQUECIDOS
-        calculateStats(enrichedReports);
-        setLoading(false);
-        setError(null);
-      } catch (err) {
-        console.error('Error processing reports:', err);
-        setError('Error al procesar los datos');
-        setLoading(false);
-      }
-    },
-    (err) => {
-      console.error('Error fetching reports from Firestore:', err);
-      setError('Error de conexión con la base de datos');
-      setLoading(false);
-    }
-  );
-  return () => unsubscribe();
-}, [calculateStats]);
-
-  // Conectar con Firestore para witnesses
-useEffect(() => {
-  const witnessesQuery = query(collection(db, 'witnesses'), orderBy('lastReportAt', 'desc'));
-  const unsubscribe = onSnapshot(witnessesQuery,
-    (snapshot) => {
-      try {
-        const witnessesData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          lastReportAt: doc.data().lastReportAt?.toDate?.() || null,
-          createdAt: doc.data().createdAt?.toDate?.() || null
-        }));
-        setWitnesses(witnessesData);
-      } catch (err) {
-        console.error('Error fetching witnesses:', err);
-      }
-    }
-  );
-  return () => unsubscribe();
-}, []);
-
-
   // Formateador seguro para números
   const formatNumber = (value: number | string | undefined): string => {
     if (typeof value === 'number') {
@@ -231,11 +231,11 @@ useEffect(() => {
     return String(value || 0);
   };
 
-  // Compartir por WhatsApp (¡CORREGIDO: espacios eliminados!)
+  // Compartir por WhatsApp
   const shareByWhatsApp = () => {
     const url = `${window.location.origin}/${selectedMunicipio}`;
     const message = `Accede aquí para reportar votos en ${getMunicipioName(selectedMunicipio)}: ${url}`;
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`; // ✅ SIN ESPACIOS
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
 
@@ -255,29 +255,19 @@ useEffect(() => {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Validar tipo de archivo
     if (!file.type.startsWith('image/')) {
       alert('⚠️ Por favor selecciona un archivo de imagen válido (JPG, PNG, GIF)');
       return;
     }
-
-    // Validar tamaño (máx 2MB)
     if (file.size > 2 * 1024 * 1024) {
       alert('⚠️ La imagen es demasiado grande. Máximo 2MB permitido.');
       return;
     }
-
     setIsUploadingImage(true);
-    
     try {
-      // Leer archivo como base64
       const base64String = await readFileAsBase64(file);
-      
-      // Actualizar estado con preview y URL base64
       setImagePreview(base64String);
       setCandidateForm(prev => ({ ...prev, imageUrl: base64String }));
-      
     } catch (error) {
       console.error('Error al procesar la imagen:', error);
       alert('❌ Error al cargar la imagen. Intente con otra imagen.');
@@ -290,16 +280,13 @@ useEffect(() => {
   const readFileAsBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      
       reader.onload = (event) => {
         const result = event.target?.result as string;
         resolve(result);
       };
-      
       reader.onerror = (error) => {
         reject(error);
       };
-      
       reader.readAsDataURL(file);
     });
   };
@@ -316,37 +303,30 @@ useEffect(() => {
   // Enviar formulario de candidato
   const handleCandidateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!candidateForm.name || !candidateForm.party || !candidateForm.ballotNumber) {
       alert('⚠️ Por favor complete el nombre, partido y número de tarjetón del candidato');
       return;
     }
-
     setIsSubmittingCandidate(true);
-    
     try {
       const candidateData = {
         ...candidateForm,
         timestamp: serverTimestamp(),
         active: true
       };
-
       await addDoc(collection(db, 'candidates'), candidateData);
-      
-      // Reset form y preview (¡INCLUYE ballotNumber!)
       setCandidateForm({
         name: '',
         party: '',
         color: '#3b82f6',
         imageUrl: '',
         position: 'gobernacion',
-        ballotNumber: '' // ← ¡RESET CORRECTO!
+        ballotNumber: ''
       });
       setImagePreview(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      
       setShowCandidateForm(false);
       alert('✅ Candidato agregado exitosamente');
     } catch (error) {
@@ -362,7 +342,6 @@ useEffect(() => {
     if (!window.confirm('¿Está seguro de eliminar este candidato? Esta acción no se puede deshacer.')) {
       return;
     }
-    
     try {
       await deleteDoc(doc(db, 'candidates', candidateId));
       alert('✅ Candidato eliminado exitosamente');
@@ -448,7 +427,6 @@ useEffect(() => {
             </p>
           </div>
         </div>
-        
         {/* URL generada */}
         <div className="mt-4 p-3 bg-gray-50 rounded-lg">
           <p className="text-sm text-gray-600 mb-1">URL para reportar votos:</p>
@@ -471,7 +449,6 @@ useEffect(() => {
           </p>
         </div>
       </div>
-
 
       {/* Enlace para Pantalla de Resultados Públicos */}
       <div className="mt-6 p-4 bg-purple-50 rounded-lg border border-purple-200">
@@ -510,7 +487,6 @@ useEffect(() => {
           <button
             onClick={() => {
               setShowCandidateForm(!showCandidateForm);
-              // Limpiar formulario al cerrar (¡INCLUYE ballotNumber!)
               if (showCandidateForm) {
                 setCandidateForm({
                   name: '',
@@ -518,7 +494,7 @@ useEffect(() => {
                   color: '#3b82f6',
                   imageUrl: '',
                   position: 'gobernacion',
-                  ballotNumber: '' // ← ¡RESET AL CERRAR!
+                  ballotNumber: ''
                 });
                 setImagePreview(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
@@ -554,7 +530,6 @@ useEffect(() => {
                   placeholder="Ej: Carlos Eduardo Gómez Pérez"
                 />
               </div>
-              
               <div>
                 <label htmlFor="candidateParty" className="block text-sm font-medium text-gray-700 mb-1">
                   Partido Político <span className="text-red-500">*</span>
@@ -570,8 +545,7 @@ useEffect(() => {
                   placeholder="Ej: Partido Verde"
                 />
               </div>
-              
-              {/* ¡NUEVO CAMPO: Número de Tarjetón! */}
+              {/* Número de Tarjetón */}
               <div>
                 <label htmlFor="candidateBallotNumber" className="block text-sm font-medium text-gray-700 mb-1">
                   Número de Tarjetón <span className="text-red-500">*</span>
@@ -590,7 +564,6 @@ useEffect(() => {
                 />
                 <p className="text-xs text-gray-500 mt-1">Número único en la boleta electoral</p>
               </div>
-              
               <div>
                 <label htmlFor="candidatePosition" className="block text-sm font-medium text-gray-700 mb-1">
                   Tipo de Elección <span className="text-red-500">*</span>
@@ -608,7 +581,6 @@ useEffect(() => {
                   ))}
                 </select>
               </div>
-              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Color del Candidato <span className="text-red-500">*</span>
@@ -634,7 +606,7 @@ useEffect(() => {
                       maxLength={7}
                     />
                   </div>
-                  <div 
+                  <div
                     className="w-8 h-8 rounded-full border-2 border-white shadow-sm"
                     style={{ backgroundColor: candidateForm.color }}
                     title={`Color actual: ${candidateForm.color}`}
@@ -642,7 +614,6 @@ useEffect(() => {
                 </div>
                 <p className="text-xs text-gray-500 mt-1">Selecciona un color para gráficos y tarjetas</p>
               </div>
-              
               {/* Carga de imagen DESDE DISPOSITIVO */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -663,13 +634,12 @@ useEffect(() => {
                       Sube una foto desde tu dispositivo (JPG, PNG, GIF - máximo 2MB)
                     </p>
                   </div>
-                  
                   {imagePreview && (
                     <div className="flex items-center space-x-3">
                       <div className="relative">
-                        <img 
-                          src={imagePreview} 
-                          alt="Vista previa" 
+                        <img
+                          src={imagePreview}
+                          alt="Vista previa"
                           className="w-20 h-20 object-cover rounded-full border-2 border-blue-200"
                         />
                         {isUploadingImage && (
@@ -693,7 +663,6 @@ useEffect(() => {
                   )}
                 </div>
               </div>
-              
               <div className="md:col-span-2 flex space-x-3 pt-2">
                 <button
                   type="submit"
@@ -730,7 +699,7 @@ useEffect(() => {
                       color: '#3b82f6',
                       imageUrl: '',
                       position: 'gobernacion',
-                      ballotNumber: '' // ← ¡RESET EN CANCELAR!
+                      ballotNumber: ''
                     });
                     setImagePreview(null);
                     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -753,7 +722,6 @@ useEffect(() => {
             </svg>
             Candidatos Registrados ({candidates.length})
           </h3>
-          
           {candidates.length === 0 ? (
             <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
               <div className="text-4xl mb-3">🗳️</div>
@@ -765,8 +733,8 @@ useEffect(() => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {candidates.map((candidate) => (
-                <div 
-                  key={candidate.id} 
+                <div
+                  key={candidate.id}
                   className="border-2 rounded-xl p-4 hover:shadow-md transition-all duration-200 relative group"
                   style={{ borderColor: candidate.color || '#3b82f6' }}
                 >
@@ -781,24 +749,22 @@ useEffect(() => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>
-                  
                   <div className="mt-4 flex items-start">
                     <div className="flex-shrink-0">
                       {candidate.imageUrl ? (
-                        <img 
-                          src={candidate.imageUrl} 
-                          alt={candidate.name} 
-                          className="w-14 h-14 rounded-full object-cover border-2" 
+                        <img
+                          src={candidate.imageUrl}
+                          alt={candidate.name}
+                          className="w-14 h-14 rounded-full object-cover border-2"
                           style={{ borderColor: candidate.color || '#3b82f6' }}
                           onError={(e) => {
-                            // Fallback si la imagen no carga (¡CORREGIDO SIN ESPACIOS!)
                             (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=${candidate.color?.replace('#', '') || '3b82f6'}&color=fff`;
                           }}
                         />
                       ) : (
-                        <div 
+                        <div
                           className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-bold border-2"
-                          style={{ 
+                          style={{
                             backgroundColor: (candidate.color || '#3b82f6') + 'cc',
                             borderColor: candidate.color || '#3b82f6'
                           }}
@@ -814,26 +780,23 @@ useEffect(() => {
                       <p className="text-sm text-gray-600 truncate" title={candidate.party}>
                         {candidate.party}
                       </p>
-                      <div 
+                      <div
                         className="mt-2 inline-block px-2 py-0.5 rounded text-xs font-medium"
-                        style={{ 
+                        style={{
                           backgroundColor: (candidate.color || '#3b82f6') + '15',
                           color: candidate.color || '#3b82f6'
                         }}
                       >
                         {ELECTION_TYPES.find(t => t.id === candidate.position)?.label || candidate.position}
                       </div>
-                      {/* ¡MOSTRAR NÚMERO DE TARJETÓN! */}
                       <div className="mt-1 text-xs font-bold text-blue-600">
                         Tarjetón #{candidate.ballotNumber || '?'}
                       </div>
                     </div>
                   </div>
-                  
-                  {/* Vista previa del color */}
                   <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
                     <span className="text-xs text-gray-500">Color:</span>
-                    <div 
+                    <div
                       className="w-6 h-6 rounded-full border border-gray-300"
                       style={{ backgroundColor: candidate.color || '#3b82f6' }}
                       title={`Color: ${candidate.color}`}
@@ -846,137 +809,131 @@ useEffect(() => {
         </div>
       </div>
 
+      {/* ✅ PANEL DE TESTIGOS (SEGURA Y FUNCIONAL) */}
+      <div className="bg-white rounded-xl shadow-md p-6 mt-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-800">Testigos Registrados</h2>
+          <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
+            {witnesses.length} testigos
+          </span>
+        </div>
+        {witnesses.length === 0 ? (
+          <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+            <div className="text-4xl mb-3">👤</div>
+            <p className="text-gray-600 font-medium">No hay testigos registrados aún</p>
+            <p className="text-gray-500 mt-1">Los testigos se registrarán automáticamente al enviar su primer reporte</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cédula</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teléfono</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Puesto</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mesa</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Municipio</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último Reporte</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {witnesses.map((witness) => (
+                  <tr key={witness.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{witness.name}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.id}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.phone}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.votingPlace}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.tableNumber}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.municipio}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      {witness.lastReportAt ? witness.lastReportAt.toLocaleTimeString('es-CO') : 'N/A'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
-
-      {/* Panel de Testigos */}
-<div className="bg-white rounded-xl shadow-md p-6 mt-6">
-  <div className="flex justify-between items-center mb-4">
-    <h2 className="text-xl font-bold text-gray-800">Testigos Registrados</h2>
-    <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
-      {witnesses.length} testigos
-    </span>
-  </div>
-  
-  {witnesses.length === 0 ? (
-    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-      <div className="text-4xl mb-3">👤</div>
-      <p className="text-gray-600 font-medium">No hay testigos registrados aún</p>
-      <p className="text-gray-500 mt-1">Los testigos se registrarán automáticamente al enviar su primer reporte</p>
-    </div>
-  ) : (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cédula</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teléfono</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Puesto</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mesa</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Municipio</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último Reporte</th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {witnesses.map((witness) => (
-            <tr key={witness.id} className="hover:bg-gray-50">
-              <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{witness.name}</td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.id}</td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.phone}</td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.votingPlace}</td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.tableNumber}</td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.municipio}</td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                {witness.lastReportAt ? witness.lastReportAt.toLocaleTimeString('es-CO') : 'N/A'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )}
-</div>
-
-
-{/* Últimos Reportes con Testigos */}
-<div className="bg-white rounded-xl shadow-md p-6 mt-6">
-  <div className="flex justify-between items-center mb-4">
-    <h2 className="text-xl font-bold text-gray-800">Últimos Reportes con Testigos</h2>
-    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
-      {reports.length} reportes
-    </span>
-  </div>
-  
-  {reports.length === 0 ? (
-    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-      <div className="text-4xl mb-3">📄</div>
-      <p className="text-gray-600 font-medium">No hay reportes aún</p>
-      <p className="text-gray-500 mt-1">Los testigos comenzarán a aparecer aquí al enviar sus primeros reportes</p>
-    </div>
-  ) : (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mesa</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Testigo</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cédula</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Votos</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">E-14</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {reports.slice(0, 10).map((report) => (
-            <tr key={report.id} className="hover:bg-gray-50">
-              <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                Mesa {report.tableNumber || 'N/A'}<br />
-                <span className="text-xs text-gray-500">{report.votingPlace || 'N/A'}</span>
-              </td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                {report.witness?.name || 'N/A'}
-              </td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                {report.witness?.id || 'N/A'}
-              </td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-blue-600">
-                {report.totalVotes || 0}
-              </td>
-              <td className="px-4 py-3 whitespace-nowrap">
-                {report.e14Image ? (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedE14Image(report.e14Image);
-                    }}
-                    className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
-                    title="Ver formulario E-14"
-                  >
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    Ver E-14
-                  </button>
-                ) : (
-                  <span className="text-gray-400 text-sm">—</span>
-                )}
-              </td>
-              <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
-                {report.timestamp?.toLocaleTimeString('es-CO') || 'N/A'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {reports.length > 10 && (
-        <p className="text-center text-sm text-gray-500 mt-3">
-          Mostrando últimos 10 reportes de {reports.length} totales
-        </p>
-      )}
-    </div>
-  )}
-</div>
-
+      {/* ✅ ÚLTIMOS REPORTES CON TESTIGOS */}
+      <div className="bg-white rounded-xl shadow-md p-6 mt-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-800">Últimos Reportes con Testigos</h2>
+          <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
+            {reports.length} reportes
+          </span>
+        </div>
+        {reports.length === 0 ? (
+          <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+            <div className="text-4xl mb-3">📄</div>
+            <p className="text-gray-600 font-medium">No hay reportes aún</p>
+            <p className="text-gray-500 mt-1">Los testigos comenzarán a aparecer aquí al enviar sus primeros reportes</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mesa</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Testigo</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cédula</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Votos</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">E-14</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {reports.slice(0, 10).map((report) => (
+                  <tr key={report.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                      Mesa {report.tableNumber || 'N/A'}<br />
+                      <span className="text-xs text-gray-500">{report.votingPlace || 'N/A'}</span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      {report.witness?.name || 'N/A'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      {report.witness?.id || 'N/A'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-blue-600">
+                      {report.totalVotes || 0}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {report.e14Image ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedE14Image(report.e14Image);
+                          }}
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                          title="Ver formulario E-14"
+                        >
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          Ver E-14
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 text-sm">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
+                      {report.timestamp instanceof Date ? report.timestamp.toLocaleTimeString('es-CO') : 'N/A'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {reports.length > 10 && (
+              <p className="text-center text-sm text-gray-500 mt-3">
+                Mostrando últimos 10 reportes de {reports.length} totales
+              </p>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Tarjetas de estadísticas */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -987,19 +944,16 @@ useEffect(() => {
             {Math.round((stats.reportedTables / stats.totalTables) * 100)}% del total
           </p>
         </div>
-        
         <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-blue-500">
           <h3 className="text-gray-500 text-sm font-medium">Votos Totales</h3>
           <p className="text-3xl font-bold text-gray-800 mt-2">{formatNumber(stats.totalVotes)}</p>
           <p className="text-blue-600 mt-1">+{formatNumber(stats.totalVotes)} hoy</p>
         </div>
-        
         <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-red-500">
           <h3 className="text-gray-500 text-sm font-medium">Alertas Activas</h3>
           <p className="text-3xl font-bold text-gray-800 mt-2">{stats.activeAlerts}</p>
           <p className="text-red-600 mt-1">{stats.activeAlerts > 0 ? 'Requieren atención' : 'Todo normal'}</p>
         </div>
-        
         <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500">
           <h3 className="text-gray-500 text-sm font-medium">Municipios</h3>
           <p className="text-3xl font-bold text-gray-800 mt-2">27/27</p>
@@ -1007,8 +961,7 @@ useEffect(() => {
         </div>
       </div>
 
-
-            {/* Widget: Enlace a Análisis Territorial */}
+      {/* Widget: Enlace a Análisis Territorial */}
       <div className="bg-white rounded-xl shadow-md p-4 border-l-4 border-indigo-500">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
           <div className="mb-3 md:mb-0">
@@ -1019,12 +972,12 @@ useEffect(() => {
               Análisis Territorial de Caldas
             </h3>
             <p className="text-sm text-gray-600 mt-1">
-              Monitoreo en tiempo real de los 27 municipios • 
+              Monitoreo en tiempo real de los 27 municipios •
               <span className="font-bold text-indigo-600 ml-1">{stats.reportedTables} mesas reportadas</span>
             </p>
           </div>
-          <a 
-            href="/analisis-territorial" 
+          <a
+            href="/analisis-territorial"
             className="w-full md:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium flex items-center justify-center shadow"
           >
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1033,7 +986,6 @@ useEffect(() => {
             Ver Análisis Completo
           </a>
         </div>
-        
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="bg-indigo-50 p-3 rounded-lg text-center border border-indigo-100">
             <div className="text-2xl font-bold text-indigo-600">{MUNICIPALITIES.length}</div>
@@ -1046,13 +998,11 @@ useEffect(() => {
             <div className="text-xs text-indigo-700 font-medium">Avance General</div>
           </div>
         </div>
-        
         <p className="text-xs text-indigo-600 mt-3 bg-indigo-50 p-2 rounded">
-          💡 <strong>Tip:</strong> En el análisis territorial encontrarás mapa interactivo, 
+          💡 <strong>Tip:</strong> En el análisis territorial encontrarás mapa interactivo,
           tabla detallada con filtros, ordenamiento y exportación a CSV para tu equipo de campaña.
         </p>
       </div>
-
 
       {/* Gráfico de votos */}
       {candidates.length > 0 ? (
@@ -1060,14 +1010,14 @@ useEffect(() => {
           <h2 className="text-xl font-bold text-gray-800 mb-4">Votos por Candidato (Todos los municipios)</h2>
           <div className="h-96">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart 
-                data={votesChartData} 
+              <BarChart
+                data={votesChartData}
                 margin={{ top: 20, right: 30, left: 20, bottom: 30 }}
                 barSize={40}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="name" 
+                <XAxis
+                  dataKey="name"
                   stroke="#6b7280"
                   tick={{ fontSize: 12 }}
                   height={70}
@@ -1076,12 +1026,12 @@ useEffect(() => {
                   textAnchor="end"
                   padding={{ left: 20, right: 20 }}
                 />
-                <YAxis 
+                <YAxis
                   stroke="#6b7280"
                   tickFormatter={formatNumber}
                   width={90}
                 />
-                <Tooltip 
+                <Tooltip
                   formatter={(value: number | [number, number] | undefined) => {
                     if (Array.isArray(value)) {
                       return [`${value[0].toLocaleString('es-CO')} - ${value[1].toLocaleString('es-CO')}`, 'Rango'];
@@ -1089,8 +1039,8 @@ useEffect(() => {
                     return [formatNumber(value), 'Votos'];
                   }}
                   labelFormatter={(label) => `Candidato: ${label}`}
-                  contentStyle={{ 
-                    backgroundColor: '#fff', 
+                  contentStyle={{
+                    backgroundColor: '#fff',
                     border: '1px solid #e5e7eb',
                     borderRadius: '8px',
                     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
@@ -1098,8 +1048,8 @@ useEffect(() => {
                   }}
                   labelStyle={{ fontWeight: 'bold' }}
                 />
-                <Bar 
-                  dataKey="votes" 
+                <Bar
+                  dataKey="votes"
                   radius={[6, 6, 0, 0]}
                   background={{ fill: '#f3f4f6' }}
                 >
@@ -1127,12 +1077,12 @@ useEffect(() => {
           <h2 className="text-xl font-bold text-gray-800 mb-4">Candidatos</h2>
           <div className="space-y-4">
             {candidateList.map((candidate) => (
-              <div 
+              <div
                 key={candidate.id}
                 className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center">
-                  <div 
+                  <div
                     className="w-12 h-12 rounded-full flex items-center justify-center mr-4"
                     style={{ backgroundColor: (candidate.color || '#3b82f6') + '20' }}
                   >
@@ -1143,7 +1093,6 @@ useEffect(() => {
                   <div>
                     <h3 className="font-bold text-gray-800">{candidate.name}</h3>
                     <p className="text-sm text-gray-500">{candidate.party} • {candidate.position}</p>
-                    {/* ¡MOSTRAR NÚMERO DE TARJETÓN! */}
                     <p className="text-xs font-bold text-blue-600 mt-1">Tarjetón #{candidate.ballotNumber || '?'}</p>
                   </div>
                 </div>
@@ -1167,9 +1116,9 @@ useEffect(() => {
         </div>
       )}
 
-     {/* Modal para ver imagen E-14 */}
+      {/* ✅ MODAL PARA VER IMAGEN E-14 */}
       {selectedE14Image && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4 cursor-pointer"
           onClick={() => setSelectedE14Image(null)}
         >
@@ -1196,10 +1145,6 @@ useEffect(() => {
           </div>
         </div>
       )}
-
-
-
     </div>
   );
 }
-
