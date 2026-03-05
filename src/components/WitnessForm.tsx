@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { addDoc, collection, serverTimestamp, query, orderBy, getDocs, where } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, query, orderBy, getDocs, where, FieldValue, Firestore } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { MUNICIPALITIES, Municipality } from '../config/municipalities';
 import { useParams } from 'react-router-dom';
@@ -111,6 +111,47 @@ export default function WitnessForm() {
 
   // Calcular total de votos (¡NO TOCADO!)
   const totalVotes = Object.values(votes).reduce((sum, count) => sum + count, 0);
+
+
+  
+  // ==================== GUARDAR O ACTUALIZAR TESTIGO EN FIRESTORE ====================
+const saveOrUpdateWitness = async () => {
+  const witnessesRef = collection(db, 'witnesses');
+  const q = query(witnessesRef, where('id', '==', formData.id));
+  const querySnapshot = await getDocs(q);
+  
+  if (!querySnapshot.empty) {
+    // Testigo ya existe, actualizar datos
+    const witnessDoc = querySnapshot.docs[0];
+    await updateDoc(doc(db, 'witnesses', witnessDoc.id), {
+      name: formData.name,
+      phone: formData.phone,
+      votingPlace: formData.votingPlace,
+      tableNumber: formData.tableNumber,
+      municipioId: municipioParam,
+      lastReportAt: serverTimestamp()
+    });
+    return witnessDoc.id;
+  } else {
+    // Nuevo testigo, crear registro
+    const docRef = await addDoc(witnessesRef, {
+      name: formData.name,
+      id: formData.id,
+      phone: formData.phone,
+      votingPlace: formData.votingPlace,
+      tableNumber: formData.tableNumber,
+      municipioId: municipioParam,
+      municipio: municipioData?.name || municipioParam,
+      createdAt: serverTimestamp(),
+      lastReportAt: serverTimestamp(),
+      active: true
+    });
+    return docRef.id;
+  }
+};
+
+
+
 
   // ==================== MANEJADOR DE CARGA DE IMAGEN E-14 CON COMPRESIÓN OBLIGATORIA ====================
   const handleE14Upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -329,137 +370,136 @@ Intente con una foto más pequeña, mejor iluminación o formato JPG.`);
 
 
     // ==================== ENVIAR SOLO IRREGULARIDAD (NUEVO - SIN E-14 NI VOTOS) ====================
-  const handleSubmitIrregularity = async () => {
-    // Validaciones específicas para irregularidad
-    if (!hasIrregularity) {
-      setSubmitError('⚠️ Debe marcar la casilla de "Reportar irregularidad" para enviar este reporte.');
-      return;
-    }
-    
-    if (!irregularityType) {
-      setSubmitError('⚠️ Seleccione el tipo de irregularidad.');
-      return;
-    }
-    
-    if (!observation.trim()) {
-      setSubmitError('⚠️ Describa la irregularidad observada.');
-      return;
-    }
-    
-    if (!formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber) {
-      setSubmitError('⚠️ Complete todos los datos del testigo y ubicación de la mesa (puesto y número de mesa).');
-      return;
-    }
+const handleSubmitIrregularity = async () => {
+  // Validaciones específicas para irregularidad
+  if (!hasIrregularity) {
+    setSubmitError('⚠️ Debe marcar la casilla de "Reportar irregularidad" para enviar este reporte.');
+    return;
+  }
+  if (!irregularityType) {
+    setSubmitError('⚠️ Seleccione el tipo de irregularidad.');
+    return;
+  }
+  if (!observation.trim()) {
+    setSubmitError('⚠️ Describa la irregularidad observada.');
+    return;
+  }
+  if (!formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber) {
+    setSubmitError('⚠️ Complete todos los datos del testigo y ubicación de la mesa (puesto y número de mesa).');
+    return;
+  }
 
-    setIsSubmitting(true);
-    setSubmitError(null);
-    setSubmitSuccess(false);
+  setIsSubmitting(true);
+  setSubmitError(null);
+  setSubmitSuccess(false);
 
-    try {
-      const reportData = {
-        ...formData,
-        reportKey: `${municipioParam}_${formData.votingPlace}_${formData.tableNumber}`, // ← ¡CAMPO ÚNICO AGREGADO!
-        votes: {},
-        totalVotes: 0,
-        hasIrregularity: true,
-        irregularityType,
-        observation: observation.trim(),
-        irregularityImages: irregularityImages,
-        e14Image: null, // ¡NO SE REQUIERE E-14 PARA IRREGULARIDADES!
-        municipio: municipioData?.name || municipioParam,
-        municipioId: municipioParam,
-        timestamp: serverTimestamp(),
-        status: 'alert'
-      };
+  try {
+    // Guardar testigo primero
+    const witnessId = await saveOrUpdateWitness();
 
-      const docRef = await addDoc(collection(db, 'reports'), reportData);
-      console.log('✅ Irregularidad enviada con ID:', docRef.id);
-      
-      setSubmitSuccess(true);
-      setLastSubmissionType('irregularity');
-      
-      // Reset SOLO de irregularidad (datos del testigo persisten)
-      setTimeout(() => {
-        setHasIrregularity(false);
-        setIrregularityType('');
-        setObservation('');
-        setIrregularityImages([]);
-        setIrregularityPreviews([]);
-        setSubmitSuccess(false);
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Error al enviar irregularidad:', error);
-      setSubmitError('❌ Error al enviar la irregularidad. Verifique su conexión e intente nuevamente.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    const reportData = {
+      ...formData,
+      witnessId, // ← VINCULA AL TESTIGO
+      reportKey: `${municipioParam}_${formData.votingPlace}_${formData.tableNumber}`,
+      votes: {},
+      totalVotes: 0,
+      hasIrregularity: true,
+      irregularityType,
+      observation: observation.trim(),
+      irregularityImages: irregularityImages,
+      e14Image: null,
+      municipio: municipioData?.name || municipioParam,
+      municipioId: municipioParam,
+      timestamp: serverTimestamp(),
+      status: 'alert'
+    };
+
+    const docRef = await addDoc(collection(db, 'reports'), reportData);
+    console.log('✅ Irregularidad enviada con ID:', docRef.id);
+    setSubmitSuccess(true);
+    setLastSubmissionType('irregularity');
+
+    // Reset SOLO de irregularidad (datos del testigo persisten)
+    setTimeout(() => {
+      setHasIrregularity(false);
+      setIrregularityType('');
+      setObservation('');
+      setIrregularityImages([]);
+      setIrregularityPreviews([]);
+      setSubmitSuccess(false);
+    }, 2000);
+  } catch (error) {
+    console.error('Error al enviar irregularidad:', error);
+    setSubmitError('❌ Error al enviar la irregularidad. Verifique su conexión e intente nuevamente.');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 // ==================== ENVIAR REPORTE DE VOTOS (NUEVO - CON E-14 OBLIGATORIO) ====================
-  const handleSubmitVotes = async () => {
-    // Validaciones específicas para votos
-    if (totalVotes === 0) {
-      setSubmitError('⚠️ Debe ingresar al menos un voto para enviar el reporte de votos.');
-      return;
-    }
-    
-    if (!e14Image) {
-      setSubmitError('❌ ¡Foto del formulario E-14 es obligatoria para enviar votos! Tome una foto clara del acta física.');
-      e14FileInputRef.current?.scrollIntoView({ behavior: 'smooth' });
-      return;
-    }
-    
-    if (!formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber) {
-      setSubmitError('⚠️ Complete todos los datos del testigo y ubicación de la mesa (puesto y número de mesa).');
-      return;
-    }
+const handleSubmitVotes = async () => {
+  // Validaciones específicas para votos
+  if (totalVotes === 0) {
+    setSubmitError('⚠️ Debe ingresar al menos un voto para enviar el reporte de votos.');
+    return;
+  }
+  if (!e14Image) {
+    setSubmitError('❌ ¡Foto del formulario E-14 es obligatoria para enviar votos! Tome una foto clara del acta física.');
+    e14FileInputRef.current?.scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+  if (!formData.name || !formData.id || !formData.phone || !formData.votingPlace || !formData.tableNumber) {
+    setSubmitError('⚠️ Complete todos los datos del testigo y ubicación de la mesa (puesto y número de mesa).');
+    return;
+  }
 
-    setIsSubmitting(true);
-    setSubmitError(null);
-    setSubmitSuccess(false);
+  setIsSubmitting(true);
+  setSubmitError(null);
+  setSubmitSuccess(false);
 
-    try {
-      const reportData = {
-        ...formData,
-        reportKey: `${municipioParam}_${formData.votingPlace}_${formData.tableNumber}`, // ← ¡CAMPO ÚNICO AGREGADO!
-        votes: { ...votes },
-        totalVotes,
-        hasIrregularity: false, // ¡NO INCLUYE IRREGULARIDAD EN ESTE REPORTE!
-        irregularityType: '',
-        observation: '',
-        irregularityImages: [],
-        e14Image: e14Image, // ¡OBLIGATORIO PARA VOTOS!
-        municipio: municipioData?.name || municipioParam,
-        municipioId: municipioParam,
-        timestamp: serverTimestamp(),
-        status: 'pending'
-      };
+  try {
+    // Guardar testigo primero
+    const witnessId = await saveOrUpdateWitness();
 
-      const docRef = await addDoc(collection(db, 'reports'), reportData);
-      console.log('✅ Reporte de votos enviado con ID:', docRef.id);
-      
-      setSubmitSuccess(true);
-      setLastSubmissionType('votes');
-      
-      // Reset de votos y E-14 (datos del testigo persisten)
-      setTimeout(() => {
-        const resetVotes: { [key: string]: number } = {};
-        candidates.forEach(cand => {
-          resetVotes[cand.id] = 0;
-        });
-        setVotes(resetVotes);
-        setE14Image(null);
-        setE14Preview(null);
-        setSubmitSuccess(false);
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Error al enviar votos:', error);
-      setSubmitError('❌ Error al enviar el reporte. Verifique su conexión e intente nuevamente.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    const reportData = {
+      ...formData,
+      witnessId, // ← VINCULA AL TESTIGO
+      reportKey: `${municipioParam}_${formData.votingPlace}_${formData.tableNumber}`,
+      votes: { ...votes },
+      totalVotes,
+      hasIrregularity: false,
+      irregularityType: '',
+      observation: '',
+      irregularityImages: [],
+      e14Image: e14Image,
+      municipio: municipioData?.name || municipioParam,
+      municipioId: municipioParam,
+      timestamp: serverTimestamp(),
+      status: 'pending'
+    };
+
+    const docRef = await addDoc(collection(db, 'reports'), reportData);
+    console.log('✅ Reporte de votos enviado con ID:', docRef.id);
+    setSubmitSuccess(true);
+    setLastSubmissionType('votes');
+
+    // Reset de votos y E-14 (datos del testigo persisten)
+    setTimeout(() => {
+      const resetVotes: { [key: string]: number } = {};
+      candidates.forEach(cand => {
+        resetVotes[cand.id] = 0;
+      });
+      setVotes(resetVotes);
+      setE14Image(null);
+      setE14Preview(null);
+      setSubmitSuccess(false);
+    }, 2000);
+  } catch (error) {
+    console.error('Error al enviar votos:', error);
+    setSubmitError('❌ Error al enviar el reporte. Verifique su conexión e intente nuevamente.');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // Si el municipio no existe, mostrar mensaje de error (¡NO TOCADO!)
   if (!municipioData) {
@@ -990,3 +1030,11 @@ Intente con una foto más pequeña, mejor iluminación o formato JPG.`);
     </div>
   );
 }
+function updateDoc(arg0: any, arg1: { name: string; phone: string; votingPlace: string; tableNumber: string; municipioId: string; lastReportAt: FieldValue; }) {
+  throw new Error('Function not implemented.');
+}
+
+function doc(db: Firestore, arg1: string, id: string): any {
+  throw new Error('Function not implemented.');
+}
+

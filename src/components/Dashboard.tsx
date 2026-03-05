@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { MUNICIPALITIES } from '../config/municipalities';
 
@@ -30,9 +30,30 @@ export default function Dashboard() {
   
   const [votesChartData, setVotesChartData] = useState<any[]>([]);
   const [candidateList, setCandidateList] = useState<any[]>([]);
+  const [candidates, setCandidates] = useState<any[]>([]);
 
   // Estado para selección de municipio
   const [selectedMunicipio, setSelectedMunicipio] = useState('manizales');
+
+  // Conectar con Firestore para candidates
+  useEffect(() => {
+    const candidatesQuery = query(collection(db, 'candidates'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(candidatesQuery,
+      (snapshot) => {
+        try {
+          const candidatesData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            timestamp: doc.data().timestamp?.toDate?.() || null
+          }));
+          setCandidates(candidatesData);
+        } catch (err) {
+          console.error('Error fetching candidates:', err);
+        }
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
   // Estado para gestión de candidatos (¡AGREGADO ballotNumber!)
   const [candidateForm, setCandidateForm] = useState({
@@ -43,8 +64,10 @@ export default function Dashboard() {
     position: 'gobernacion',
     ballotNumber: '' // ← ¡NUEVO CAMPO OBLIGATORIO!
   });
-  const [candidates, setCandidates] = useState<any[]>([]);
   const [showCandidateForm, setShowCandidateForm] = useState(false);
+  const [witnesses, setWitnesses] = useState<any[]>([]);
+  const [selectedE14Image, setSelectedE14Image] = useState<string | null>(null);
+  const [reports, setReports] = useState<any[]>([]);
   const [isSubmittingCandidate, setIsSubmittingCandidate] = useState(false);
   
   // Estado para carga de imagen
@@ -52,100 +75,153 @@ export default function Dashboard() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Calcular estadísticas (¡CORREGIDO CON useCallback!)
-  const calculateStats = useCallback((reportsData: any[]) => {
-    let totalVotes = 0;
-    const candidateTotals: { [key: string]: number } = {};
-    
-    // Inicializar contadores con candidatos reales
-    candidates.forEach(cand => {
-      candidateTotals[cand.id] = 0;
-    });
 
-    reportsData.forEach(report => {
-      if (report.votes && typeof report.votes === 'object') {
-        Object.entries(report.votes).forEach(([candId, voteCount]) => {
-          if (typeof voteCount === 'number' && candidateTotals[candId] !== undefined) {
-            candidateTotals[candId] += voteCount;
-            totalVotes += voteCount;
-          }
-        });
+  // Obtener datos del testigo por ID
+  // Obtener datos del testigo por ID
+const getWitnessData = async (witnessId: string) => {
+  try {
+    const witnessDoc = await getDoc(doc(db, 'witnesses', witnessId));
+    if (witnessDoc.exists()) {
+      return { id: witnessDoc.id, ...witnessDoc.data() };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error obteniendo datos del testigo:', error);
+    return null;
+  }
+};
+
+  // Calcular estadísticas
+const calculateStats = useCallback(async (reportsData: any[]) => {
+  let totalVotes = 0;
+  const candidateTotals: { [key: string]: number } = {};
+  
+  // Inicializar contadores con candidatos reales
+  candidates.forEach(cand => {
+    candidateTotals[cand.id] = 0;
+  });
+
+  // Enriquecer reportes con datos del testigo
+  const enrichedReports = await Promise.all(
+    reportsData.map(async (report) => {
+      if (report.witnessId) {
+        const witnessData = await getWitnessData(report.witnessId);
+        return { ...report, witness: witnessData };
       }
-    });
+      return report;
+    })
+  );
 
-    setStats({
-      reportedTables: reportsData.length,
-      totalTables: MUNICIPALITIES.reduce((sum, m) => sum + m.tables, 0),
-      totalVotes,
-      activeAlerts: reportsData.filter(r => r.hasIrregularity && !r.resolved).length
-    });
-
-    const chartData = candidates.map(cand => ({
-      name: cand.name.split(' ')[0],
-      votes: candidateTotals[cand.id] || 0,
-      color: cand.color || '#3b82f6'
-    }));
-    setVotesChartData(chartData);
-
-    const candidateData = candidates.map(cand => ({
-      ...cand,
-      votes: candidateTotals[cand.id] || 0
-    }));
-    setCandidateList(candidateData);
-  }, [candidates]); // ← Dependencia explícita
-
-  // Conectar con Firestore para reports (¡CORREGIDO SIN ESLINT ERROR!)
-  useEffect(() => {
-    const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        try {
-          const reportsData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          calculateStats(reportsData);
-          setLoading(false);
-          setError(null);
-        } catch (err) {
-          console.error('Error processing reports:', err);
-          setError('Error al procesar los datos');
-          setLoading(false);
+  enrichedReports.forEach(report => {
+    if (report.votes && typeof report.votes === 'object') {
+      Object.entries(report.votes).forEach(([candId, voteCount]) => {
+        if (typeof voteCount === 'number' && candidateTotals[candId] !== undefined) {
+          candidateTotals[candId] += voteCount;
+          totalVotes += voteCount;
         }
-      },
-      (err) => {
-        console.error('Error fetching reports from Firestore:', err);
-        setError('Error de conexión con la base de datos');
+      });
+    }
+  });
+
+  setStats({
+    reportedTables: enrichedReports.length,
+    totalTables: MUNICIPALITIES.reduce((sum, m) => sum + m.tables, 0),
+    totalVotes,
+    activeAlerts: enrichedReports.filter(r => r.hasIrregularity && !r.resolved).length
+  });
+
+  const chartData = candidates.map(cand => ({
+    name: cand.name.split(' ')[0],
+    votes: candidateTotals[cand.id] || 0,
+    color: cand.color || '#3b82f6'
+  }));
+  setVotesChartData(chartData);
+
+  const candidateData = candidates.map(cand => ({
+    ...cand,
+    votes: candidateTotals[cand.id] || 0
+  }));
+  setCandidateList(candidateData);
+}, [candidates]);
+
+// Conectar con Firestore para reports
+useEffect(() => {
+  const q = query(collection(db, 'reports'), orderBy('timestamp', 'desc'));
+  const unsubscribe = onSnapshot(q,
+    async (snapshot) => {
+      try {
+        // Tipar explícitamente el documento del reporte
+        const reportsData = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            witnessId: data.witnessId || null, // ← EXPLÍCITO
+            votes: data.votes || {},
+            totalVotes: data.totalVotes || 0,
+            hasIrregularity: data.hasIrregularity || false,
+            irregularityType: data.irregularityType || '',
+            observation: data.observation || '',
+            e14Image: data.e14Image || null,
+            municipio: data.municipio || '',
+            municipioId: data.municipioId || '',
+            votingPlace: data.votingPlace || '',
+            tableNumber: data.tableNumber || '',
+            timestamp: data.timestamp?.toDate?.() || new Date(),
+            ...data // Resto de campos
+          };
+        });
+        
+        // Enriquecer reportes con datos del testigo
+        const enrichedReports = await Promise.all(
+          reportsData.map(async (report) => {
+            if (report.witnessId) {
+              const witnessData = await getWitnessData(report.witnessId);
+              return { ...report, witness: witnessData };
+            }
+            return report;
+          })
+        );
+        
+        setReports(enrichedReports); // ← GUARDAR REPORTES ENRIQUECIDOS
+        calculateStats(enrichedReports);
+        setLoading(false);
+        setError(null);
+      } catch (err) {
+        console.error('Error processing reports:', err);
+        setError('Error al procesar los datos');
         setLoading(false);
       }
-    );
+    },
+    (err) => {
+      console.error('Error fetching reports from Firestore:', err);
+      setError('Error de conexión con la base de datos');
+      setLoading(false);
+    }
+  );
+  return () => unsubscribe();
+}, [calculateStats]);
 
-    return () => unsubscribe();
-  }, [calculateStats]); // ← calculateStats estable gracias a useCallback
-
-  // Conectar con Firestore para candidates
-  useEffect(() => {
-    const candidatesQuery = query(collection(db, 'candidates'), orderBy('timestamp', 'desc'));
-    
-    const unsubscribe = onSnapshot(candidatesQuery, 
-      (snapshot) => {
-        try {
-          const candidatesData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          setCandidates(candidatesData);
-        } catch (err) {
-          console.error('Error fetching candidates:', err);
-        }
+  // Conectar con Firestore para witnesses
+useEffect(() => {
+  const witnessesQuery = query(collection(db, 'witnesses'), orderBy('lastReportAt', 'desc'));
+  const unsubscribe = onSnapshot(witnessesQuery,
+    (snapshot) => {
+      try {
+        const witnessesData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          lastReportAt: doc.data().lastReportAt?.toDate?.() || null,
+          createdAt: doc.data().createdAt?.toDate?.() || null
+        }));
+        setWitnesses(witnessesData);
+      } catch (err) {
+        console.error('Error fetching witnesses:', err);
       }
-    );
+    }
+  );
+  return () => unsubscribe();
+}, []);
 
-    return () => unsubscribe();
-  }, []);
 
   // Formateador seguro para números
   const formatNumber = (value: number | string | undefined): string => {
@@ -770,6 +846,138 @@ export default function Dashboard() {
         </div>
       </div>
 
+
+
+      {/* Panel de Testigos */}
+<div className="bg-white rounded-xl shadow-md p-6 mt-6">
+  <div className="flex justify-between items-center mb-4">
+    <h2 className="text-xl font-bold text-gray-800">Testigos Registrados</h2>
+    <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
+      {witnesses.length} testigos
+    </span>
+  </div>
+  
+  {witnesses.length === 0 ? (
+    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+      <div className="text-4xl mb-3">👤</div>
+      <p className="text-gray-600 font-medium">No hay testigos registrados aún</p>
+      <p className="text-gray-500 mt-1">Los testigos se registrarán automáticamente al enviar su primer reporte</p>
+    </div>
+  ) : (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cédula</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teléfono</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Puesto</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mesa</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Municipio</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Último Reporte</th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {witnesses.map((witness) => (
+            <tr key={witness.id} className="hover:bg-gray-50">
+              <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{witness.name}</td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.id}</td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.phone}</td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.votingPlace}</td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.tableNumber}</td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{witness.municipio}</td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                {witness.lastReportAt ? witness.lastReportAt.toLocaleTimeString('es-CO') : 'N/A'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>
+
+
+{/* Últimos Reportes con Testigos */}
+<div className="bg-white rounded-xl shadow-md p-6 mt-6">
+  <div className="flex justify-between items-center mb-4">
+    <h2 className="text-xl font-bold text-gray-800">Últimos Reportes con Testigos</h2>
+    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
+      {reports.length} reportes
+    </span>
+  </div>
+  
+  {reports.length === 0 ? (
+    <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+      <div className="text-4xl mb-3">📄</div>
+      <p className="text-gray-600 font-medium">No hay reportes aún</p>
+      <p className="text-gray-500 mt-1">Los testigos comenzarán a aparecer aquí al enviar sus primeros reportes</p>
+    </div>
+  ) : (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mesa</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Testigo</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cédula</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Votos</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">E-14</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {reports.slice(0, 10).map((report) => (
+            <tr key={report.id} className="hover:bg-gray-50">
+              <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                Mesa {report.tableNumber || 'N/A'}<br />
+                <span className="text-xs text-gray-500">{report.votingPlace || 'N/A'}</span>
+              </td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                {report.witness?.name || 'N/A'}
+              </td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                {report.witness?.id || 'N/A'}
+              </td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-blue-600">
+                {report.totalVotes || 0}
+              </td>
+              <td className="px-4 py-3 whitespace-nowrap">
+                {report.e14Image ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedE14Image(report.e14Image);
+                    }}
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center"
+                    title="Ver formulario E-14"
+                  >
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Ver E-14
+                  </button>
+                ) : (
+                  <span className="text-gray-400 text-sm">—</span>
+                )}
+              </td>
+              <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
+                {report.timestamp?.toLocaleTimeString('es-CO') || 'N/A'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {reports.length > 10 && (
+        <p className="text-center text-sm text-gray-500 mt-3">
+          Mostrando últimos 10 reportes de {reports.length} totales
+        </p>
+      )}
+    </div>
+  )}
+</div>
+
+
       {/* Tarjetas de estadísticas */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
@@ -958,6 +1166,40 @@ export default function Dashboard() {
           </p>
         </div>
       )}
+
+     {/* Modal para ver imagen E-14 */}
+      {selectedE14Image && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setSelectedE14Image(null)}
+        >
+          <div className="max-w-4xl w-full" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4 px-4">
+              <h3 className="text-white text-lg font-bold">Formulario E-14</h3>
+              <button
+                onClick={() => setSelectedE14Image(null)}
+                className="text-white text-3xl hover:text-gray-300 transition-colors"
+                aria-label="Cerrar modal"
+              >
+                ✕
+              </button>
+            </div>
+            <img
+              src={selectedE14Image}
+              alt="Formulario E-14"
+              className="w-full max-h-[80vh] object-contain rounded-lg border-2 border-white"
+              loading="lazy"
+            />
+            <p className="text-white text-sm text-center mt-3 px-4">
+              Haga clic fuera de la imagen o en la X para cerrar
+            </p>
+          </div>
+        </div>
+      )}
+
+
+
     </div>
   );
 }
+
